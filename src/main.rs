@@ -32,6 +32,7 @@ fn get_oauth_token() -> Option<String> {
 
 fn main() {
     let project_path = std::env::current_dir().expect("Failed to get current directory");
+    let home_dir = std::env::var("HOME").expect("HOME not set");
 
     let xdg = xdg::BaseDirectories::with_prefix("contenant");
     let claude_state_dir = xdg
@@ -42,6 +43,14 @@ fn main() {
     let claude_mount = format!(
         "type=bind,src={},dst=/home/claude/.claude",
         claude_state_dir.display()
+    );
+    let skills_mount = format!(
+        "type=bind,src={}/.claude/skills,dst=/home/claude/.claude/skills",
+        home_dir
+    );
+    let commands_mount = format!(
+        "type=bind,src={}/.claude/commands,dst=/home/claude/.claude/commands",
+        home_dir
     );
 
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -57,6 +66,10 @@ fn main() {
         &project_mount,
         "--mount",
         &claude_mount,
+        "--mount",
+        &skills_mount,
+        "--mount",
+        &commands_mount,
     ]);
 
     if let Some(token) = get_oauth_token() {

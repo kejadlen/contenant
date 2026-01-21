@@ -1,2 +1,3 @@
 - use a more recent version of node
 - facet?
+- share episodic memory
