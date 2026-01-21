@@ -17,8 +17,8 @@ RUN npm install -g @anthropic-ai/claude-code
 # Create non-root user
 RUN useradd -m -s /bin/bash claude
 
-# Skip onboarding
-RUN echo '{"hasCompletedOnboarding":true}' > /home/claude/.claude.json \
+# Skip onboarding and trust /project
+RUN echo '{"hasCompletedOnboarding":true,"projects":{"/project":{"hasTrustDialogAccepted":true}}}' > /home/claude/.claude.json \
     && chown claude:claude /home/claude/.claude.json
 
 USER claude
