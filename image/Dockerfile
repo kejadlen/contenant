@@ -16,6 +16,11 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # Create non-root user
 RUN useradd -m -s /bin/bash claude
+
+# Skip onboarding
+RUN echo '{"hasCompletedOnboarding":true}' > /home/claude/.claude.json \
+    && chown claude:claude /home/claude/.claude.json
+
 USER claude
 WORKDIR /home/claude
 

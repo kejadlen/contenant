@@ -1,6 +1,34 @@
+use serde::Deserialize;
 use std::process::Command;
 
 const IMAGE: &str = "contenant:latest";
+
+#[derive(Deserialize)]
+struct Credentials {
+    #[serde(rename = "claudeAiOauth")]
+    claude_ai_oauth: OAuthCredentials,
+}
+
+#[derive(Deserialize)]
+struct OAuthCredentials {
+    #[serde(rename = "accessToken")]
+    access_token: String,
+}
+
+fn get_oauth_token() -> Option<String> {
+    let output = Command::new("security")
+        .args(["find-generic-password", "-s", "Claude Code-credentials", "-w"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let json = String::from_utf8(output.stdout).ok()?;
+    let creds: Credentials = serde_json::from_str(&json).ok()?;
+    Some(creds.claude_ai_oauth.access_token)
+}
 
 fn main() {
     let project_path = std::env::current_dir().expect("Failed to get current directory");
@@ -30,6 +58,10 @@ fn main() {
         "--mount",
         &claude_mount,
     ]);
+
+    if let Some(token) = get_oauth_token() {
+        cmd.args(["--env", &format!("CLAUDE_CODE_OAUTH_TOKEN={}", token)]);
+    }
 
     if let Some((entrypoint, rest)) = args.split_first() {
         cmd.args(["--entrypoint", entrypoint, IMAGE]);
