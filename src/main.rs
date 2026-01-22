@@ -1,3 +1,6 @@
+mod backend;
+
+use backend::{AppleContainer, Backend};
 use serde::Deserialize;
 use std::process::Command;
 
@@ -55,7 +58,8 @@ fn main() {
 
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    let mut cmd = Command::new("container");
+    let backend = AppleContainer;
+    let mut cmd = backend.command();
     cmd.args([
         "run",
         "-it",
