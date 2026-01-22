@@ -1,10 +1,24 @@
-mod backend;
+mod runtime;
 
-use backend::{AppleContainer, Backend};
+use clap::Parser;
+use runtime::Runtime;
 use serde::Deserialize;
 use std::process::Command;
 
 const IMAGE: &str = "contenant:latest";
+
+#[derive(Parser)]
+#[command(name = "contenant")]
+#[command(about = "Run Claude Code in a container")]
+struct Cli {
+    /// Container runtime to use
+    #[arg(long, short, value_enum, default_value_t)]
+    runtime: Runtime,
+
+    /// Command and arguments to run in the container
+    #[arg(trailing_var_arg = true)]
+    args: Vec<String>,
+}
 
 #[derive(Deserialize)]
 struct Credentials {
@@ -34,6 +48,8 @@ fn get_oauth_token() -> Option<String> {
 }
 
 fn main() {
+    let cli = Cli::parse();
+
     let project_path = std::env::current_dir().expect("Failed to get current directory");
     let home_dir = std::env::var("HOME").expect("HOME not set");
 
@@ -56,10 +72,7 @@ fn main() {
         home_dir
     );
 
-    let args: Vec<String> = std::env::args().skip(1).collect();
-
-    let backend = AppleContainer;
-    let mut cmd = backend.command();
+    let mut cmd = cli.runtime.command();
     cmd.args([
         "run",
         "-it",
@@ -80,7 +93,7 @@ fn main() {
         cmd.args(["--env", &format!("CLAUDE_CODE_OAUTH_TOKEN={}", token)]);
     }
 
-    if let Some((entrypoint, rest)) = args.split_first() {
+    if let Some((entrypoint, rest)) = cli.args.split_first() {
         cmd.args(["--entrypoint", entrypoint, IMAGE]);
         cmd.args(rest);
     } else {

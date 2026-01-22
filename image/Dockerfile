@@ -16,6 +16,7 @@ RUN useradd -m -s /bin/bash claude
 
 USER claude
 WORKDIR /home/claude
+ENV PATH="/home/claude/.local/bin:$PATH"
 
 # Install Claude Code via native installer (as claude user)
 RUN curl -fsSL https://claude.ai/install.sh | bash
@@ -23,4 +24,4 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 # Skip onboarding, trust /project, disable auto-update
 RUN echo '{"hasCompletedOnboarding":true,"autoUpdaterStatus":"disabled","projects":{"/project":{"hasTrustDialogAccepted":true}}}' > /home/claude/.claude.json
 
-ENTRYPOINT ["/home/claude/.local/bin/claude"]
+ENTRYPOINT ["claude"]
