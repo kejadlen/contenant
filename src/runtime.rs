@@ -16,4 +16,17 @@ impl Runtime {
             Runtime::Docker => Command::new("docker"),
         }
     }
+
+    pub fn container_exists(&self, name: &str) -> bool {
+        let output = self.command().args(["inspect", name]).output().ok();
+
+        output.map_or(false, |o| o.status.success())
+    }
+
+    pub fn start_container(&self, name: &str) -> std::process::ExitStatus {
+        self.command()
+            .args(["start", "-ai", name])
+            .status()
+            .expect("Failed to start container")
+    }
 }

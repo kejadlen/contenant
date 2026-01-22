@@ -51,18 +51,18 @@ Support running custom commands: `contenant -- bash`, `contenant -- ls /project`
 
 ## Remaining Phases
 
-### Phase 3: Per-Project Containers
+### Phase 3: Per-Project Containers ✓
 
 **Goal:** Each project gets its own named, reusable container.
 
 **Testable outcome:** Running `contenant` twice in the same directory reattaches to the same container.
 
 **Changes:**
-1. Add `sha2` and `hex` dependencies
-2. Generate container ID from project path hash: `contenant-{basename}-{short-hash}`
-3. Check if container exists (inspect returns `[]` for missing, not error)
-4. If exists: `container start -ai <id>`
-5. If not: `container run --name <id> ...` (remove `--rm`)
+1. Add `sha2` dependency ✓
+2. Generate container ID from project path hash: `contenant-{basename}-{short-hash}` ✓
+3. Check if container exists (inspect returns success for existing containers) ✓
+4. If exists: `container start -ai <id>` ✓
+5. If not: `container run --name <id> ...` (remove `--rm`) ✓
 
 ### Phase 4: List and Clean Commands
 
@@ -97,6 +97,7 @@ Support running custom commands: `contenant -- bash`, `contenant -- ls /project`
 | 2 | ✓ | Minimal CLI that runs container |
 | 2.5 | ✓ | Command passthrough |
 | 2.6 | ✓ | Auth sharing from host keychain |
-| 3 | TODO | Per-project container identity |
+| 2.7 | ✓ | Environment customization (jj, skills, commands) |
+| 3 | ✓ | Per-project container identity |
 | 4 | TODO | List and clean commands |
 | 5 | TODO | Network firewall |
