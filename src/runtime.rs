@@ -29,4 +29,11 @@ impl Runtime {
             .status()
             .expect("Failed to start container")
     }
+
+    pub fn remove_container(&self, name: &str) {
+        self.command()
+            .args(["rm", "-f", name])
+            .status()
+            .expect("Failed to remove container");
+    }
 }

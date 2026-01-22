@@ -1,6 +1,6 @@
 mod runtime;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use runtime::Runtime;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -14,12 +14,23 @@ const IMAGE: &str = "contenant:latest";
 #[command(about = "Run Claude Code in a container")]
 struct Cli {
     /// Container runtime to use
-    #[arg(long, short, value_enum, default_value_t)]
+    #[arg(long, short, value_enum, default_value_t, global = true)]
     runtime: Runtime,
 
-    /// Command and arguments to run in the container
-    #[arg(trailing_var_arg = true)]
-    args: Vec<String>,
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Remove the container for the current project
+    Clean,
+    /// Run container (can also omit subcommand)
+    Run {
+        /// Command and arguments to run in the container
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -81,6 +92,23 @@ fn main() {
 
     let container_id = generate_container_id(&project_path);
 
+    // Handle clean command
+    if let Some(Commands::Clean) = cli.command {
+        if cli.runtime.container_exists(&container_id) {
+            cli.runtime.remove_container(&container_id);
+            println!("Removed container: {}", container_id);
+        } else {
+            println!("No container found for this project");
+        }
+        return;
+    }
+
+    // Extract args from Run command, or use empty vec for default
+    let args = match cli.command {
+        Some(Commands::Run { args }) => args,
+        _ => vec![],
+    };
+
     // Check if container already exists
     let status = if cli.runtime.container_exists(&container_id) {
         cli.runtime.start_container(&container_id)
@@ -127,7 +155,7 @@ fn main() {
             cmd.args(["--env", &format!("CLAUDE_CODE_OAUTH_TOKEN={}", token)]);
         }
 
-        if let Some((entrypoint, rest)) = cli.args.split_first() {
+        if let Some((entrypoint, rest)) = args.split_first() {
             cmd.args(["--entrypoint", entrypoint, IMAGE]);
             cmd.args(rest);
         } else {

@@ -1,2 +1,3 @@
 - facet?
 - share episodic memory
+- check to see if the container needs to be reset
