@@ -170,8 +170,12 @@ fn main() {
             "type=bind,src={}/.claude/skills,dst=/home/claude/.claude/skills",
             home_dir
         );
-        let commands_mount = format!(
-            "type=bind,src={}/.claude/commands,dst=/home/claude/.claude/commands",
+        let jj_config_mount = format!(
+            "type=bind,src={}/.config/jj/config.toml,dst=/home/claude/.config/jj/config.toml,readonly",
+            home_dir
+        );
+        let ssh_agent_mount = format!(
+            "type=bind,src={}/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock,dst=/run/1password-agent.sock",
             home_dir
         );
 
@@ -190,7 +194,11 @@ fn main() {
             "--mount",
             &skills_mount,
             "--mount",
-            &commands_mount,
+            &jj_config_mount,
+            "--mount",
+            &ssh_agent_mount,
+            "--env",
+            "SSH_AUTH_SOCK=/run/1password-agent.sock",
         ]);
 
         if let Some(token) = get_oauth_token() {
