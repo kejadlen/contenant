@@ -4,3 +4,4 @@
 - add dockerfile composition
 - add subcommand/argument for changing entrypoint
 - move things out of the dockerfile?
+- autocomplete

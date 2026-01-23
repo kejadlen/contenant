@@ -2,8 +2,8 @@ mod runtime;
 
 use clap::{Parser, Subcommand};
 use runtime::Runtime;
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 
@@ -41,19 +41,8 @@ enum Commands {
     },
 }
 
-#[derive(Deserialize)]
-struct Credentials {
-    #[serde(rename = "claudeAiOauth")]
-    claude_ai_oauth: OAuthCredentials,
-}
-
-#[derive(Deserialize)]
-struct OAuthCredentials {
-    #[serde(rename = "accessToken")]
-    access_token: String,
-}
-
-fn get_oauth_token() -> Option<String> {
+/// Get full credentials JSON from macOS Keychain
+fn get_credentials_json() -> Option<String> {
     let output = Command::new("security")
         .args([
             "find-generic-password",
@@ -68,9 +57,7 @@ fn get_oauth_token() -> Option<String> {
         return None;
     }
 
-    let json = String::from_utf8(output.stdout).ok()?;
-    let creds: Credentials = serde_json::from_str(&json).ok()?;
-    Some(creds.claude_ai_oauth.access_token)
+    String::from_utf8(output.stdout).ok()
 }
 
 fn generate_container_id(project_path: &Path) -> String {
@@ -151,16 +138,23 @@ fn main() {
         _ => vec![],
     };
 
+    // Set up claude state directory and sync credentials from host
+    let xdg = xdg::BaseDirectories::with_prefix("contenant");
+    let claude_state_dir = xdg
+        .create_data_directory("claude")
+        .expect("Failed to create claude state directory");
+
+    // Sync credentials from macOS Keychain to container's credential file
+    if let Some(creds) = get_credentials_json() {
+        let creds_path = claude_state_dir.join(".credentials.json");
+        fs::write(&creds_path, creds.trim()).expect("Failed to write credentials");
+    }
+
     // Check if container already exists
     let status = if cli.runtime.container_exists(&container_id) {
         cli.runtime.start_container(&container_id)
     } else {
         // Create new container
-        let xdg = xdg::BaseDirectories::with_prefix("contenant");
-        let claude_state_dir = xdg
-            .create_data_directory("claude")
-            .expect("Failed to create claude state directory");
-
         let project_mount = format!("type=bind,src={},dst=/project", project_path.display());
         let claude_mount = format!(
             "type=bind,src={},dst=/home/claude/.claude",
@@ -200,10 +194,6 @@ fn main() {
             "--env",
             "SSH_AUTH_SOCK=/run/1password-agent.sock",
         ]);
-
-        if let Some(token) = get_oauth_token() {
-            cmd.args(["--env", &format!("CLAUDE_CODE_OAUTH_TOKEN={}", token)]);
-        }
 
         if let Some((entrypoint, rest)) = args.split_first() {
             cmd.args(["--entrypoint", entrypoint, IMAGE]);

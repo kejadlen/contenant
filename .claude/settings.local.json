@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(jj diff:*)",
+      "Skill(superpowers:systematic-debugging)"
+    ]
+  }
+}
