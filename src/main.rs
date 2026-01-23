@@ -23,8 +23,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Remove the container for the current project
-    Clean,
+    /// List all contenant containers
+    List,
+    /// Remove container(s)
+    Clean {
+        /// Path to project (defaults to current directory)
+        path: Option<String>,
+        /// Remove all contenant containers
+        #[arg(long)]
+        all: bool,
+    },
     /// Run container (can also omit subcommand)
     Run {
         /// Command and arguments to run in the container
@@ -90,18 +98,52 @@ fn main() {
     let project_path = std::env::current_dir().expect("Failed to get current directory");
     let home_dir = std::env::var("HOME").expect("HOME not set");
 
-    let container_id = generate_container_id(&project_path);
-
-    // Handle clean command
-    if let Some(Commands::Clean) = cli.command {
-        if cli.runtime.container_exists(&container_id) {
-            cli.runtime.remove_container(&container_id);
-            println!("Removed container: {}", container_id);
+    // Handle list command
+    if let Some(Commands::List) = cli.command {
+        let containers = cli.runtime.list_containers("contenant-");
+        if containers.is_empty() {
+            println!("No contenant containers found");
         } else {
-            println!("No container found for this project");
+            println!("Contenant containers:");
+            for container in containers {
+                println!("  {}", container);
+            }
         }
         return;
     }
+
+    // Handle clean command
+    if let Some(Commands::Clean { path, all }) = &cli.command {
+        if *all {
+            let containers = cli.runtime.list_containers("contenant-");
+            if containers.is_empty() {
+                println!("No contenant containers found");
+            } else {
+                for container in containers {
+                    cli.runtime.remove_container(&container);
+                    println!("Removed container: {}", container);
+                }
+            }
+        } else {
+            let target_path = if let Some(p) = path {
+                Path::new(p)
+                    .canonicalize()
+                    .unwrap_or_else(|_| Path::new(p).to_path_buf())
+            } else {
+                project_path.clone()
+            };
+            let container_id = generate_container_id(&target_path);
+            if cli.runtime.container_exists(&container_id) {
+                cli.runtime.remove_container(&container_id);
+                println!("Removed container: {}", container_id);
+            } else {
+                println!("No container found for this project");
+            }
+        }
+        return;
+    }
+
+    let container_id = generate_container_id(&project_path);
 
     // Extract args from Run command, or use empty vec for default
     let args = match cli.command {

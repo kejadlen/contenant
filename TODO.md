@@ -1,3 +1,5 @@
 - facet?
 - share episodic memory
 - check to see if the container needs to be reset
+- add dockerfile composition
+- fix committing to include a committer - possibly an issue w/signing?

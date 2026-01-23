@@ -36,4 +36,22 @@ impl Runtime {
             .status()
             .expect("Failed to remove container");
     }
+
+    pub fn list_containers(&self, prefix: &str) -> Vec<String> {
+        let output = self
+            .command()
+            .args(["ps", "-a", "--format", "{{.Names}}"])
+            .output()
+            .expect("Failed to list containers");
+
+        if !output.status.success() {
+            return vec![];
+        }
+
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|line| line.starts_with(prefix))
+            .map(|s| s.to_string())
+            .collect()
+    }
 }

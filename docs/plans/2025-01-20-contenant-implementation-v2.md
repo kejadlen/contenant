@@ -64,16 +64,16 @@ Support running custom commands: `contenant -- bash`, `contenant -- ls /project`
 4. If exists: `container start -ai <id>` ✓
 5. If not: `container run --name <id> ...` (remove `--rm`) ✓
 
-### Phase 4: List and Clean Commands
+### Phase 4: List and Clean Commands ✓
 
 **Goal:** Manage containers.
 
 **Testable outcome:** `contenant list` shows containers, `contenant clean [path]` removes them.
 
 **Changes:**
-1. Add `clap` dependency
-2. Add subcommands: `list`, `clean [path]`, `clean --all`
-3. Filter `container list -a` output for `contenant-*` prefix
+1. Add `clap` dependency ✓
+2. Add subcommands: `list`, `clean [path]`, `clean --all` ✓
+3. Filter `container list -a` output for `contenant-*` prefix ✓
 
 ### Phase 5: Firewall
 
@@ -99,5 +99,5 @@ Support running custom commands: `contenant -- bash`, `contenant -- ls /project`
 | 2.6 | ✓ | Auth sharing from host keychain |
 | 2.7 | ✓ | Environment customization (jj, skills, commands) |
 | 3 | ✓ | Per-project container identity |
-| 4 | TODO | List and clean commands |
+| 4 | ✓ | List and clean commands |
 | 5 | TODO | Network firewall |
