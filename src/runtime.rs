@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::Command;
 
 use clap::ValueEnum;
@@ -15,6 +16,45 @@ impl Runtime {
             Runtime::Apple => Command::new("container"),
             Runtime::Docker => Command::new("docker"),
         }
+    }
+
+    /// Get the hash label from an image, if it exists
+    pub fn get_image_hash(&self, image: &str) -> Option<String> {
+        let output = self
+            .command()
+            .args([
+                "inspect",
+                "--format",
+                "{{index .Config.Labels \"contenant.hash\"}}",
+                image,
+            ])
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if hash.is_empty() { None } else { Some(hash) }
+    }
+
+    /// Build an image from a directory
+    pub fn build_image(&self, image: &str, build_dir: &Path, hash: &str) -> bool {
+        let status = self
+            .command()
+            .args([
+                "build",
+                "-t",
+                image,
+                "--build-arg",
+                &format!("IMAGE_HASH={}", hash),
+                build_dir.to_str().unwrap(),
+            ])
+            .status()
+            .expect("Failed to run build command");
+
+        status.success()
     }
 
     pub fn container_exists(&self, name: &str) -> bool {

@@ -1,5 +1,8 @@
 FROM debian:trixie-slim
 
+ARG IMAGE_HASH
+LABEL contenant.hash=${IMAGE_HASH}
+
 RUN apt-get update && apt-get install -y \
     curl \
     git \

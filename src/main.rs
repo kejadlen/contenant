@@ -8,6 +8,12 @@ use std::path::Path;
 use std::process::Command;
 
 const IMAGE: &str = "contenant:latest";
+const IMAGE_HASH: &str = env!("IMAGE_HASH");
+
+// Embedded image files
+const DOCKERFILE: &str = include_str!("../image/Dockerfile");
+const CLAUDE_JSON: &str = include_str!("../image/claude.json");
+const JJ_SIGNING_TOML: &str = include_str!("../image/jj-container-signing.toml");
 
 #[derive(Parser)]
 #[command(name = "contenant")]
@@ -58,6 +64,41 @@ fn get_credentials_json() -> Option<String> {
     }
 
     String::from_utf8(output.stdout).ok()
+}
+
+/// Ensure the container image is built and up-to-date
+fn ensure_image(runtime: &Runtime) {
+    // Check if image exists with correct hash
+    if let Some(current_hash) = runtime.get_image_hash(IMAGE) {
+        if current_hash == IMAGE_HASH {
+            return; // Image is up-to-date
+        }
+        eprintln!(
+            "Image outdated (have {}, need {}), rebuilding...",
+            current_hash, IMAGE_HASH
+        );
+    } else {
+        eprintln!("Building container image...");
+    }
+
+    // Write embedded files to temp directory and build
+    let temp_dir = std::env::temp_dir().join(format!("contenant-build-{}", IMAGE_HASH));
+    fs::create_dir_all(&temp_dir).expect("Failed to create temp build directory");
+
+    fs::write(temp_dir.join("Dockerfile"), DOCKERFILE).expect("Failed to write Dockerfile");
+    fs::write(temp_dir.join("claude.json"), CLAUDE_JSON).expect("Failed to write claude.json");
+    fs::write(temp_dir.join("jj-container-signing.toml"), JJ_SIGNING_TOML)
+        .expect("Failed to write jj-container-signing.toml");
+
+    if !runtime.build_image(IMAGE, &temp_dir, IMAGE_HASH) {
+        eprintln!("Failed to build container image");
+        std::process::exit(1);
+    }
+
+    // Clean up temp directory
+    let _ = fs::remove_dir_all(&temp_dir);
+
+    eprintln!("Image built successfully");
 }
 
 fn generate_container_id(project_path: &Path) -> String {
@@ -137,6 +178,9 @@ fn main() {
         Some(Commands::Run { args }) => args,
         _ => vec![],
     };
+
+    // Ensure image is built and up-to-date
+    ensure_image(&cli.runtime);
 
     // Set up claude state directory and sync credentials from host
     let xdg = xdg::BaseDirectories::with_prefix("contenant");
