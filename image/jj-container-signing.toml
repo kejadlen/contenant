@@ -1,0 +1,3 @@
+# JJ signing override: use ssh-keygen (talks to forwarded SSH agent) instead of macOS op-ssh-sign
+[signing]
+backends.ssh.program = "ssh-keygen"
