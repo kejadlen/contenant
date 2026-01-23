@@ -73,7 +73,7 @@ impl Runtime {
 
     /// Start a container (detached)
     pub fn start_container(&self, name: &str) {
-        let _ = self.command().args(["start", name]).status();
+        let _ = self.command().args(["start", name]).output();
     }
 
     /// Stop a running container
