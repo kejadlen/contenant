@@ -2,5 +2,4 @@
 - share episodic memory
 - check to see if the container needs to be reset
 - add dockerfile composition
-- add subcommand/argument for changing entrypoint
 - autocomplete

@@ -39,7 +39,7 @@ enum Commands {
         #[arg(long)]
         all: bool,
     },
-    /// Run container (can also omit subcommand)
+    /// Run a command in the container (default: claude)
     Run {
         /// Command and arguments to run in the container
         #[arg(trailing_var_arg = true)]
@@ -120,6 +120,67 @@ fn generate_container_id(project_path: &Path) -> String {
     format!("contenant-{}-{}", basename, short_hash)
 }
 
+/// Create a new container (without starting it interactively)
+fn create_container(
+    runtime: &Runtime,
+    container_id: &str,
+    project_path: &Path,
+    claude_state_dir: &Path,
+    home_dir: &str,
+) {
+    let project_mount = format!("type=bind,src={},dst=/project", project_path.display());
+    let claude_mount = format!(
+        "type=bind,src={},dst=/home/claude/.claude",
+        claude_state_dir.display()
+    );
+    let skills_mount = format!(
+        "type=bind,src={}/.claude/skills,dst=/home/claude/.claude/skills",
+        home_dir
+    );
+    let jj_config_mount = format!(
+        "type=bind,src={}/.config/jj/config.toml,dst=/home/claude/.config/jj/config.toml,readonly",
+        home_dir
+    );
+    let ssh_agent_mount = format!(
+        "type=bind,src={}/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock,dst=/run/1password-agent.sock",
+        home_dir
+    );
+
+    let status = runtime
+        .command()
+        .args([
+            "create",
+            "--name",
+            container_id,
+            "--workdir",
+            "/project",
+            "-it",
+            "--mount",
+            &project_mount,
+            "--mount",
+            &claude_mount,
+            "--mount",
+            &skills_mount,
+            "--mount",
+            &jj_config_mount,
+            "--mount",
+            &ssh_agent_mount,
+            "--env",
+            "SSH_AUTH_SOCK=/run/1password-agent.sock",
+            "--entrypoint",
+            "sleep",
+            IMAGE,
+            "infinity",
+        ])
+        .status()
+        .expect("Failed to create container");
+
+    if !status.success() {
+        eprintln!("Failed to create container");
+        std::process::exit(1);
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -173,12 +234,6 @@ fn main() {
 
     let container_id = generate_container_id(&project_path);
 
-    // Extract args from Run command, or use empty vec for default
-    let args = match cli.command {
-        Some(Commands::Run { args }) => args,
-        _ => vec![],
-    };
-
     // Ensure image is built and up-to-date
     ensure_image(&cli.runtime);
 
@@ -194,60 +249,31 @@ fn main() {
         fs::write(&creds_path, creds.trim()).expect("Failed to write credentials");
     }
 
-    // Check if container already exists
-    let status = if cli.runtime.container_exists(&container_id) {
-        cli.runtime.start_container(&container_id)
-    } else {
-        // Create new container
-        let project_mount = format!("type=bind,src={},dst=/project", project_path.display());
-        let claude_mount = format!(
-            "type=bind,src={},dst=/home/claude/.claude",
-            claude_state_dir.display()
-        );
-        let skills_mount = format!(
-            "type=bind,src={}/.claude/skills,dst=/home/claude/.claude/skills",
-            home_dir
-        );
-        let jj_config_mount = format!(
-            "type=bind,src={}/.config/jj/config.toml,dst=/home/claude/.config/jj/config.toml,readonly",
-            home_dir
-        );
-        let ssh_agent_mount = format!(
-            "type=bind,src={}/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock,dst=/run/1password-agent.sock",
-            home_dir
-        );
-
-        let mut cmd = cli.runtime.command();
-        cmd.args([
-            "run",
-            "-it",
-            "--name",
-            &container_id,
-            "--workdir",
-            "/project",
-            "--mount",
-            &project_mount,
-            "--mount",
-            &claude_mount,
-            "--mount",
-            &skills_mount,
-            "--mount",
-            &jj_config_mount,
-            "--mount",
-            &ssh_agent_mount,
-            "--env",
-            "SSH_AUTH_SOCK=/run/1password-agent.sock",
-        ]);
-
-        if let Some((entrypoint, rest)) = args.split_first() {
-            cmd.args(["--entrypoint", entrypoint, IMAGE]);
-            cmd.args(rest);
-        } else {
-            cmd.arg(IMAGE);
-        }
-
-        cmd.status().expect("Failed to run container")
+    // Extract command args, default to "claude"
+    let args = match &cli.command {
+        Some(Commands::Run { args }) if !args.is_empty() => args.clone(),
+        _ => vec!["claude".to_string()],
     };
+
+    // Ensure container exists
+    if !cli.runtime.container_exists(&container_id) {
+        create_container(
+            &cli.runtime,
+            &container_id,
+            &project_path,
+            &claude_state_dir,
+            &home_dir,
+        );
+    }
+
+    // Start container, exec command, stop if no other sessions active
+    cli.runtime.start_container(&container_id);
+    let status = cli.runtime.exec_container(&container_id, &args);
+
+    // Only stop if just the sleep process remains (no other exec sessions)
+    if cli.runtime.container_process_count(&container_id) <= 1 {
+        cli.runtime.stop_container(&container_id);
+    }
 
     std::process::exit(status.code().unwrap_or(1));
 }
