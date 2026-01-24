@@ -11,26 +11,11 @@ facet-kdl is deprecated with no ergonomic KDL alternative. Fennel provides a cle
 **Config file:** `~/.config/contenant/config.fnl`
 
 ```fennel
-(local c (require :contenant))
-(local config c.defaults)
-
-(table.insert config.mounts (c.mount "/src" "/app"))
-(table.insert config.mounts (c.mount "~/.config" "/home/user/.config" {:readonly true}))
-
-config
+{:mounts [{:src "/src" :dst "/app"}
+          {:src "~/.config" :dst "/home/user/.config" :readonly true}]}
 ```
 
-**mount function signatures:**
-- `(c.mount src)` - dst defaults to src
-- `(c.mount src dst)` - explicit paths
-- `(c.mount src dst {:readonly true})` - with options
-
-**Starting fresh (no defaults):**
-```fennel
-(local c (require :contenant))
-
-{:mounts [(c.mount "/only" "/this")]}
-```
+The config file returns a table that gets deserialized directly to Rust structs.
 
 ## Architecture
 
@@ -48,7 +33,7 @@ config
     └────────┬────────┘
              │
              ▼
-    Config { mounts: Vec<Mount> }
+       Config struct
 ```
 
 ## Implementation
@@ -83,31 +68,6 @@ pub struct Config {
 }
 ```
 
-### Contenant Module (Rust → Lua)
-
-```rust
-struct ContenantModule;
-
-impl IntoLua for ContenantModule {
-    fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
-        let exports = lua.create_table()?;
-
-        exports.set("mount", lua.create_function(|lua, (src, dst, opts): (String, Option<String>, Option<LuaTable>)| {
-            let mount = Mount {
-                src: src.clone(),
-                dst: dst.unwrap_or(src),
-                readonly: opts.and_then(|o| o.get("readonly").ok()).unwrap_or(false),
-            };
-            lua.to_value(&mount)
-        })?)?;
-
-        exports.set("defaults", lua.to_value(&Config::default())?)?;
-
-        Ok(LuaValue::Table(exports))
-    }
-}
-```
-
 ### Config Loading
 
 ```rust
@@ -129,13 +89,7 @@ impl Config {
         // Load Fennel compiler
         lua.load(FENNEL_SRC).exec()?;
 
-        // Register contenant module
-        let preload: LuaTable = lua.globals().get::<LuaTable>("package")?.get("preload")?;
-        preload.set("contenant", lua.create_function(|lua, ()| {
-            ContenantModule.into_lua(lua)
-        })?)?;
-
-        // Run user config
+        // Run user config and deserialize result
         let fennel: LuaTable = lua.globals().get("fennel")?;
         let dofile: LuaFunction = fennel.get("dofile")?;
         let result: LuaValue = dofile.call(config_path.to_string_lossy().as_ref())?;

@@ -294,3 +294,17 @@ fn main() {
 
     std::process::exit(status.code().unwrap_or(1));
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_load() {
+        let config = config::Config::load();
+        println!("Loaded config: {:?}", config);
+        for mount in config.mounts() {
+            println!("Mount: {} -> {} (readonly: {})", mount.src(), mount.dst(), mount.readonly());
+        }
+    }
+}

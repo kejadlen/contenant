@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "*", features = ["derive"] }
-facet = "0.42.0"
-facet-kdl = "0.42.0"
+mlua = { version = "*", features = ["lua54", "vendored", "serde"] }
+serde = { version = "*", features = ["derive"] }
 sha2 = "*"
 xdg = "*"
 
