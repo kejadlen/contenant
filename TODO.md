@@ -3,3 +3,8 @@
 - check to see if the container needs to be reset
 - add dockerfile composition
 - autocomplete
+- configuration
+- fennel configuration
+- use a new container for each instance - it's too confusing to reuse the container
+- add docker volumes to persist/share across containers
+- make sure claude skills work correctly

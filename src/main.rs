@@ -1,3 +1,4 @@
+mod config;
 mod runtime;
 
 use clap::{Parser, Subcommand};
@@ -127,6 +128,7 @@ fn create_container(
     project_path: &Path,
     claude_state_dir: &Path,
     home_dir: &str,
+    config: &config::Config,
 ) {
     let project_mount = format!("type=bind,src={},dst=/project", project_path.display());
     let claude_mount = format!(
@@ -146,34 +148,45 @@ fn create_container(
         home_dir
     );
 
-    let status = runtime
-        .command()
-        .args([
-            "create",
-            "--name",
-            container_id,
-            "--workdir",
-            "/project",
-            "-it",
-            "--mount",
-            &project_mount,
-            "--mount",
-            &claude_mount,
-            "--mount",
-            &skills_mount,
-            "--mount",
-            &jj_config_mount,
-            "--mount",
-            &ssh_agent_mount,
-            "--env",
-            "SSH_AUTH_SOCK=/run/1password-agent.sock",
-            "--entrypoint",
-            "sleep",
-            IMAGE,
-            "infinity",
-        ])
-        .status()
-        .expect("Failed to create container");
+    let mut cmd = runtime.command();
+    cmd.args([
+        "create",
+        "--name",
+        container_id,
+        "--workdir",
+        "/project",
+        "-it",
+        "--mount",
+        &project_mount,
+        "--mount",
+        &claude_mount,
+        "--mount",
+        &skills_mount,
+        "--mount",
+        &jj_config_mount,
+        "--mount",
+        &ssh_agent_mount,
+    ]);
+
+    for mount in config.mounts() {
+        let mount_spec = if mount.readonly() {
+            format!("type=bind,src={},dst={},readonly", mount.src(), mount.dst())
+        } else {
+            format!("type=bind,src={},dst={}", mount.src(), mount.dst())
+        };
+        cmd.args(["--mount", &mount_spec]);
+    }
+
+    cmd.args([
+        "--env",
+        "SSH_AUTH_SOCK=/run/1password-agent.sock",
+        "--entrypoint",
+        "sleep",
+        IMAGE,
+        "infinity",
+    ]);
+
+    let status = cmd.status().expect("Failed to create container");
 
     if !status.success() {
         eprintln!("Failed to create container");
@@ -255,6 +268,9 @@ fn main() {
         _ => vec!["claude".to_string()],
     };
 
+    // Load configuration
+    let config = config::Config::load();
+
     // Ensure container exists
     if !cli.runtime.container_exists(&container_id) {
         create_container(
@@ -263,6 +279,7 @@ fn main() {
             &project_path,
             &claude_state_dir,
             &home_dir,
+            &config,
         );
     }
 

@@ -1,6 +1,5 @@
 {
   "hasCompletedOnboarding": true,
-  "autoUpdaterStatus": "disabled",
   "projects": {
     "/project": {
       "hasTrustDialogAccepted": true
