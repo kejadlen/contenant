@@ -155,7 +155,7 @@ impl<B: Backend> Contenant<B> {
             })
         };
 
-        let mounts = self
+        let mut mounts = self
             .config
             .mounts
             .iter()
@@ -167,6 +167,10 @@ impl<B: Backend> Contenant<B> {
                 Ok(format!("{}:{}{}", source, target, suffix))
             })
             .collect::<Result<Vec<_>>>()?;
+
+        // Mount XDG state directory as /workspace/.claude for project state persistence
+        let state_dir = self.xdg_dirs.create_state_directory("claude")?;
+        mounts.push(format!("{}:/workspace/.claude", state_dir.display()));
 
         self.backend.run(&mounts)
     }
