@@ -9,5 +9,5 @@ fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    Contenant::default().run()
+    Contenant::new()?.run()
 }
