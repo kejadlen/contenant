@@ -7,6 +7,7 @@ edition = "2024"
 sha2 = "*"
 
 [dependencies]
+color-eyre = "*"
 tracing = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
 xdg = "*"
