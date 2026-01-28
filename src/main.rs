@@ -1,7 +1,7 @@
 use std::fs;
 use std::process::Command;
 
-use color_eyre::eyre::{bail, Result};
+use color_eyre::eyre::{Result, bail};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -43,10 +43,10 @@ impl Backend for Docker {
         info!(hash = IMAGE_HASH, "Building image");
 
         let xdg_dirs = xdg::BaseDirectories::with_prefix("contenant");
-        let cache_dir = xdg_dirs.create_cache_directory("")?;
-
-        let dockerfile_path = cache_dir.join("Dockerfile");
+        let dockerfile_path = xdg_dirs.place_cache_file("Dockerfile")?;
         fs::write(&dockerfile_path, DOCKERFILE)?;
+
+        let cache_dir = dockerfile_path.parent().unwrap();
 
         let status = Command::new("docker")
             .args([
@@ -79,18 +79,30 @@ impl Backend for Docker {
     }
 }
 
+struct Contenant<B = Docker> {
+    backend: B,
+}
+
+impl Default for Contenant<Docker> {
+    fn default() -> Self {
+        Self { backend: Docker }
+    }
+}
+
+impl<B: Backend> Contenant<B> {
+    fn run(&self) -> Result<()> {
+        if !self.backend.is_current() {
+            self.backend.build()?;
+        }
+        self.backend.run()
+    }
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    let backend = Docker;
-
-    if !backend.is_current() {
-        backend.build()?;
-    }
-    backend.run()?;
-
-    Ok(())
+    Contenant::default().run()
 }
