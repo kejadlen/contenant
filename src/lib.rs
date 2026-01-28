@@ -119,6 +119,24 @@ pub struct Contenant<B = Docker> {
     project_dirs: xdg::BaseDirectories,
 }
 
+fn get_credentials_json() -> Option<String> {
+    let output = Command::new("security")
+        .args([
+            "find-generic-password",
+            "-s",
+            "Claude Code-credentials",
+            "-w",
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8(output.stdout).ok()
+}
+
 fn project_id(dir: &Path) -> String {
     let hash = format!("{:x}", Sha256::digest(dir.as_os_str().as_encoded_bytes()));
     let short_hash = &hash[..8];
@@ -183,9 +201,13 @@ impl<B: Backend> Contenant<B> {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        // Mount XDG state directory as /workspace/.claude for project state persistence
+        // Sync credentials from macOS Keychain and mount as ~/.claude in the container
         let state_dir = self.project_dirs.create_state_directory("claude")?;
-        mounts.push(format!("{}:/workspace/.claude", state_dir.display()));
+        // This will need to be configuration at some point
+        if let Some(creds) = get_credentials_json() {
+            fs::write(state_dir.join(".credentials.json"), creds.trim())?;
+        }
+        mounts.push(format!("{}:/home/claude/.claude", state_dir.display()));
 
         self.backend.run(&mounts)
     }
