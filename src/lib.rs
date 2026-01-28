@@ -66,8 +66,18 @@ impl Backend for Docker {
     }
 
     fn run(&self) -> Result<()> {
+        let cwd = std::env::current_dir()?;
         let status = Command::new("docker")
-            .args(["run", "-it", "--rm", IMAGE_NAME])
+            .args([
+                "run",
+                "-it",
+                "--rm",
+                "-v",
+                &format!("{}:/workspace", cwd.display()),
+                "-w",
+                "/workspace",
+                IMAGE_NAME,
+            ])
             .status()?;
 
         let Some(code) = status.code() else {
