@@ -4,6 +4,7 @@ use std::process::Command;
 
 use color_eyre::eyre::{Result, bail};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use tracing::info;
 
 const DOCKERFILE: &str = include_str!("../image/Dockerfile");
@@ -114,16 +115,30 @@ impl Backend for Docker {
 pub struct Contenant<B = Docker> {
     backend: B,
     config: Config,
-    xdg_dirs: xdg::BaseDirectories,
+    app_dirs: xdg::BaseDirectories,
+    project_dirs: xdg::BaseDirectories,
+}
+
+fn project_id(dir: &Path) -> String {
+    let hash = format!("{:x}", Sha256::digest(dir.as_os_str().as_encoded_bytes()));
+    let short_hash = &hash[..8];
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    format!("{}-{}", short_hash, name)
 }
 
 impl Contenant<Docker> {
-    pub fn new() -> Result<Self> {
-        let xdg_dirs = xdg::BaseDirectories::with_prefix("contenant");
+    pub fn new(project_dir: &Path) -> Result<Self> {
+        let app_dirs = xdg::BaseDirectories::with_prefix("contenant");
+        let project_dirs =
+            xdg::BaseDirectories::with_profile("contenant", project_id(project_dir));
         Ok(Self {
             backend: Docker,
-            config: Config::load(&xdg_dirs)?,
-            xdg_dirs,
+            config: Config::load(&app_dirs)?,
+            app_dirs,
+            project_dirs,
         })
     }
 }
@@ -132,9 +147,9 @@ impl<B: Backend> Contenant<B> {
     pub fn run(&self) -> Result<()> {
         if !self.backend.is_current() {
             // Probably will want to extract this at some point
-            let dockerfile_path = self.xdg_dirs.place_cache_file("Dockerfile")?;
+            let dockerfile_path = self.app_dirs.place_cache_file("Dockerfile")?;
             fs::write(&dockerfile_path, DOCKERFILE)?;
-            let claude_json_path = self.xdg_dirs.place_cache_file("claude.json")?;
+            let claude_json_path = self.app_dirs.place_cache_file("claude.json")?;
             fs::write(&claude_json_path, CLAUDE_JSON)?;
             let context = dockerfile_path.parent().unwrap();
 
@@ -142,7 +157,7 @@ impl<B: Backend> Contenant<B> {
         }
 
         let config_dir = self
-            .xdg_dirs
+            .project_dirs
             .get_config_home()
             .map(|p| p.to_string_lossy().trim_end_matches('/').to_string());
         let container_home = "/home/claude".to_string();
@@ -169,7 +184,7 @@ impl<B: Backend> Contenant<B> {
             .collect::<Result<Vec<_>>>()?;
 
         // Mount XDG state directory as /workspace/.claude for project state persistence
-        let state_dir = self.xdg_dirs.create_state_directory("claude")?;
+        let state_dir = self.project_dirs.create_state_directory("claude")?;
         mounts.push(format!("{}:/workspace/.claude", state_dir.display()));
 
         self.backend.run(&mounts)

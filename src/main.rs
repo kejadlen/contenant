@@ -9,5 +9,6 @@ fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    Contenant::new()?.run()
+    let cwd = std::env::current_dir()?;
+    Contenant::new(&cwd)?.run()
 }

@@ -8,6 +8,7 @@ sha2 = "*"
 
 [dependencies]
 color-eyre = "*"
+sha2 = "*"
 dirs = "*"
 serde = { version = "*", features = ["derive"] }
 serde_yaml_ng = "*"
