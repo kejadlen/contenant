@@ -1,13 +1,16 @@
 use std::fs;
 use std::process::Command;
 use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
 
 const DOCKERFILE: &str = include_str!("../image/Dockerfile");
 const IMAGE_HASH: &str = env!("IMAGE_HASH");
 const IMAGE_NAME: &str = "contenant:latest";
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     if !image_is_current() {
         build_image();

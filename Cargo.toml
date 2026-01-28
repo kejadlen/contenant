@@ -8,5 +8,5 @@ sha2 = "*"
 
 [dependencies]
 tracing = "*"
-tracing-subscriber = "*"
+tracing-subscriber = { version = "*", features = ["env-filter"] }
 xdg = "*"
