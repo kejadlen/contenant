@@ -39,7 +39,7 @@ impl Config {
 pub trait Backend {
     fn is_current(&self) -> bool;
     fn build(&self, context: &Path) -> Result<()>;
-    fn run(&self, config: &Config) -> Result<()>;
+    fn run(&self, mounts: &[String]) -> Result<()>;
 }
 
 pub struct Docker;
@@ -87,19 +87,15 @@ impl Backend for Docker {
         Ok(())
     }
 
-    fn run(&self, config: &Config) -> Result<()> {
+    fn run(&self, mounts: &[String]) -> Result<()> {
         let cwd = std::env::current_dir()?;
 
         let mut cmd = Command::new("docker");
         cmd.args(["run", "-it", "--rm"]);
         cmd.args(["-v", &format!("{}:/workspace", cwd.display())]);
 
-        for mount in &config.mounts {
-            let suffix = if mount.readonly { ":ro" } else { "" };
-            cmd.args([
-                "-v",
-                &format!("{}:{}{}", mount.source, mount.target, suffix),
-            ]);
+        for mount in mounts {
+            cmd.args(["-v", mount]);
         }
 
         cmd.args(["-w", "/workspace", IMAGE_NAME]);
@@ -134,12 +130,41 @@ impl Contenant<Docker> {
 impl<B: Backend> Contenant<B> {
     pub fn run(&self) -> Result<()> {
         if !self.backend.is_current() {
-            // TODO Should this go into Contenant::init or something?
+            // Probably will want to extract this at some point
             let dockerfile_path = self.xdg_dirs.place_cache_file("Dockerfile")?;
             fs::write(&dockerfile_path, DOCKERFILE)?;
             let context = dockerfile_path.parent().unwrap();
+
             self.backend.build(context)?;
         }
-        self.backend.run(&self.config)
+
+        let config_dir = self
+            .xdg_dirs
+            .get_config_home()
+            .map(|p| p.to_string_lossy().into_owned());
+        let container_home = "/home/claude".to_string();
+
+        let context = |var: &str| -> Result<Option<String>, std::env::VarError> {
+            Ok(match var {
+                "CONTENANT_CONFIG_DIR" => config_dir.clone(),
+                "CONTENANT_CONTAINER_HOME" => Some(container_home.clone()),
+                _ => std::env::var(var).ok(),
+            })
+        };
+
+        let mounts = self
+            .config
+            .mounts
+            .iter()
+            .map(|mount| {
+                let home_dir = || dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
+                let source = shellexpand::full_with_context(&mount.source, home_dir, &context)?;
+                let target = shellexpand::full_with_context(&mount.target, home_dir, &context)?;
+                let suffix = if mount.readonly { ":ro" } else { "" };
+                Ok(format!("{}:{}{}", source, target, suffix))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        self.backend.run(&mounts)
     }
 }

@@ -8,8 +8,10 @@ sha2 = "*"
 
 [dependencies]
 color-eyre = "*"
+dirs = "*"
 serde = { version = "*", features = ["derive"] }
 serde_yaml_ng = "*"
+shellexpand = "*"
 tracing = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
 xdg = "*"
