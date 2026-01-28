@@ -7,6 +7,7 @@ use serde::Deserialize;
 use tracing::info;
 
 const DOCKERFILE: &str = include_str!("../image/Dockerfile");
+const CLAUDE_JSON: &str = include_str!("../image/claude.json");
 const IMAGE_HASH: &str = env!("IMAGE_HASH");
 const IMAGE_NAME: &str = "contenant:latest";
 
@@ -133,6 +134,8 @@ impl<B: Backend> Contenant<B> {
             // Probably will want to extract this at some point
             let dockerfile_path = self.xdg_dirs.place_cache_file("Dockerfile")?;
             fs::write(&dockerfile_path, DOCKERFILE)?;
+            let claude_json_path = self.xdg_dirs.place_cache_file("claude.json")?;
+            fs::write(&claude_json_path, CLAUDE_JSON)?;
             let context = dockerfile_path.parent().unwrap();
 
             self.backend.build(context)?;
@@ -141,7 +144,7 @@ impl<B: Backend> Contenant<B> {
         let config_dir = self
             .xdg_dirs
             .get_config_home()
-            .map(|p| p.to_string_lossy().into_owned());
+            .map(|p| p.to_string_lossy().trim_end_matches('/').to_string());
         let container_home = "/home/claude".to_string();
 
         let context = |var: &str| -> Result<Option<String>, std::env::VarError> {
