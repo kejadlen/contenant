@@ -202,8 +202,9 @@ impl<B: Backend> Contenant<B> {
             .collect::<Result<Vec<_>>>()?;
 
         // Sync credentials from macOS Keychain and mount as ~/.claude in the container
-        let state_dir = self.project_dirs.create_state_directory("claude")?;
-        // This will need to be configuration at some point
+        let state_dir = self.app_dirs.create_state_directory("claude")?;
+        // This will need to be configuration at some point. Also right now, we assume
+        // the presence of an authed Claude on the host, which we shouldn't need eventually
         if let Some(creds) = get_credentials_json() {
             fs::write(state_dir.join(".credentials.json"), creds.trim())?;
         }
