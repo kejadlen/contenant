@@ -9,8 +9,17 @@ use tracing::info;
 
 const DOCKERFILE: &str = include_str!("../image/Dockerfile");
 const CLAUDE_JSON: &str = include_str!("../image/claude.json");
-const IMAGE_HASH: &str = env!("IMAGE_HASH");
-const IMAGE_NAME: &str = "contenant:latest";
+
+fn base_image_hash() -> String {
+    let hash = format!(
+        "{:x}",
+        Sha256::new()
+            .chain_update(DOCKERFILE)
+            .chain_update(CLAUDE_JSON)
+            .finalize()
+    );
+    hash[..12].to_string()
+}
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Config {
@@ -39,45 +48,42 @@ impl Config {
 }
 
 pub trait Backend {
-    fn is_current(&self) -> bool;
-    fn build(&self, context: &Path) -> Result<()>;
-    fn run(&self, mounts: &[String]) -> Result<()>;
+    fn image_hash(&self, image: &str) -> Option<String>;
+    fn build(&self, image: &str, context: &Path, hash: &str) -> Result<()>;
+    fn run(&self, image: &str, mounts: &[String]) -> Result<()>;
 }
 
 pub struct Docker;
 
 impl Backend for Docker {
-    fn is_current(&self) -> bool {
-        let Ok(output) = Command::new("docker")
+    fn image_hash(&self, image: &str) -> Option<String> {
+        let output = Command::new("docker")
             .args([
                 "inspect",
                 "--format",
                 "{{index .Config.Labels \"contenant.hash\"}}",
-                IMAGE_NAME,
+                image,
             ])
             .output()
-        else {
-            return false;
-        };
+            .ok()?;
 
         if !output.status.success() {
-            return false;
+            return None;
         }
 
-        let label = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        label == IMAGE_HASH
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
-    fn build(&self, context: &Path) -> Result<()> {
-        info!(hash = IMAGE_HASH, "Building image");
+    fn build(&self, image: &str, context: &Path, hash: &str) -> Result<()> {
+        info!(image, hash, "Building image");
 
         let status = Command::new("docker")
             .args([
                 "build",
                 "--build-arg",
-                &format!("IMAGE_HASH={}", IMAGE_HASH),
+                &format!("IMAGE_HASH={}", hash),
                 "-t",
-                IMAGE_NAME,
+                image,
                 context.to_str().unwrap(),
             ])
             .status()?;
@@ -89,7 +95,7 @@ impl Backend for Docker {
         Ok(())
     }
 
-    fn run(&self, mounts: &[String]) -> Result<()> {
+    fn run(&self, image: &str, mounts: &[String]) -> Result<()> {
         let cwd = std::env::current_dir()?;
 
         let mut cmd = Command::new("docker");
@@ -100,7 +106,7 @@ impl Backend for Docker {
             cmd.args(["-v", mount]);
         }
 
-        cmd.args(["-w", "/workspace", IMAGE_NAME]);
+        cmd.args(["-w", "/workspace", image]);
 
         let status = cmd.status()?;
 
@@ -163,15 +169,38 @@ impl Contenant<Docker> {
 
 impl<B: Backend> Contenant<B> {
     pub fn run(&self) -> Result<()> {
-        if !self.backend.is_current() {
-            // Probably will want to extract this at some point
+        let image_hash = base_image_hash();
+
+        // Build base image if needed
+        if self.backend.image_hash("contenant:base").as_deref() != Some(image_hash.as_str()) {
             let dockerfile_path = self.app_dirs.place_cache_file("Dockerfile")?;
             fs::write(&dockerfile_path, DOCKERFILE)?;
             let claude_json_path = self.app_dirs.place_cache_file("claude.json")?;
             fs::write(&claude_json_path, CLAUDE_JSON)?;
             let context = dockerfile_path.parent().unwrap();
 
-            self.backend.build(context)?;
+            self.backend.build("contenant:base", context, &image_hash)?;
+        }
+
+        // Build user image if a user Dockerfile exists
+        let mut run_image = "contenant:base";
+        if let Some(user_dockerfile) = self.app_dirs.find_config_file("Dockerfile") {
+            let user_contents = fs::read(&user_dockerfile)?;
+            let user_hash = format!(
+                "{:x}",
+                Sha256::new()
+                    .chain_update(&image_hash)
+                    .chain_update(&user_contents)
+                    .finalize()
+            );
+            let user_hash = &user_hash[..12];
+
+            if self.backend.image_hash("contenant:user").as_deref() != Some(user_hash) {
+                let context = user_dockerfile.parent().unwrap();
+                self.backend.build("contenant:user", context, user_hash)?;
+            }
+
+            run_image = "contenant:user";
         }
 
         let config_dir = self
@@ -210,6 +239,6 @@ impl<B: Backend> Contenant<B> {
         }
         mounts.push(format!("{}:/home/claude/.claude", state_dir.display()));
 
-        self.backend.run(&mounts)
+        self.backend.run(run_image, &mounts)
     }
 }

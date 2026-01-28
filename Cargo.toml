@@ -3,9 +3,6 @@ name = "contenant"
 version = "0.1.0"
 edition = "2024"
 
-[build-dependencies]
-sha2 = "*"
-
 [dependencies]
 color-eyre = "*"
 sha2 = "*"
