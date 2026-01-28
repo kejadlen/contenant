@@ -7,4 +7,6 @@ edition = "2024"
 sha2 = "*"
 
 [dependencies]
+tracing = "*"
+tracing-subscriber = "*"
 xdg = "*"

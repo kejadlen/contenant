@@ -1,11 +1,14 @@
 use std::fs;
 use std::process::Command;
+use tracing::{error, info};
 
 const DOCKERFILE: &str = include_str!("../image/Dockerfile");
 const IMAGE_HASH: &str = env!("IMAGE_HASH");
 const IMAGE_NAME: &str = "contenant:latest";
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     if !image_is_current() {
         build_image();
     }
@@ -32,7 +35,7 @@ fn image_is_current() -> bool {
 }
 
 fn build_image() {
-    eprintln!("Building image (hash: {})...", IMAGE_HASH);
+    info!(hash = IMAGE_HASH, "Building image");
 
     let xdg_dirs = xdg::BaseDirectories::with_prefix("contenant");
     let cache_dir = xdg_dirs
@@ -55,7 +58,7 @@ fn build_image() {
         .expect("Failed to run docker build");
 
     if !status.success() {
-        eprintln!("Docker build failed");
+        error!("Docker build failed");
         std::process::exit(1);
     }
 }
