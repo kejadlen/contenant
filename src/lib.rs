@@ -88,24 +88,6 @@ pub struct Contenant<B = Docker> {
     project_dirs: xdg::BaseDirectories,
 }
 
-fn get_credentials_json() -> Option<String> {
-    let output = Command::new("security")
-        .args([
-            "find-generic-password",
-            "-s",
-            "Claude Code-credentials",
-            "-w",
-        ])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    String::from_utf8(output.stdout).ok()
-}
-
 fn project_id(dir: &Path) -> String {
     let hash = format!("{:x}", Sha256::digest(dir.as_os_str().as_encoded_bytes()));
     let short_hash = &hash[..8];
@@ -161,7 +143,17 @@ impl<B: Backend> Contenant<B> {
             })
         };
 
-        let mut mounts = self
+        // Default mount: persist Claude state (auth, settings, etc.)
+        let claude_state_dir = self.app_dirs.place_state_file("claude")?;
+        fs::create_dir_all(&claude_state_dir)?;
+        let mut mounts = vec![format!(
+            "{}:/home/claude/.claude",
+            claude_state_dir.display()
+        )];
+
+        // User-defined mounts (can shadow subdirectories of defaults)
+        let config_dir = self.app_dirs.get_config_home().unwrap();
+        let user_mounts = self
             .config
             .mounts
             .iter()
@@ -169,19 +161,18 @@ impl<B: Backend> Contenant<B> {
                 let home_dir = || dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
                 let source = shellexpand::full_with_context(&mount.source, home_dir, &context)?;
                 let target = shellexpand::full_with_context(&mount.target, home_dir, &context)?;
+                // Resolve relative source paths from config directory
+                let source_path = Path::new(source.as_ref());
+                let source = if source_path.is_relative() {
+                    config_dir.join(source_path).to_string_lossy().into_owned()
+                } else {
+                    source.into_owned()
+                };
                 let suffix = if mount.readonly { ":ro" } else { "" };
                 Ok(format!("{}:{}{}", source, target, suffix))
             })
             .collect::<Result<Vec<_>>>()?;
-
-        // Sync credentials from macOS Keychain and mount as ~/.claude in the container
-        let state_dir = self.app_dirs.create_state_directory("claude")?;
-        // This will need to be configuration at some point. Also right now, we assume
-        // the presence of an authed Claude on the host, which we shouldn't need eventually
-        if let Some(creds) = get_credentials_json() {
-            fs::write(state_dir.join(".credentials.json"), creds.trim())?;
-        }
-        mounts.push(format!("{}:/home/claude/.claude", state_dir.display()));
+        mounts.extend(user_mounts);
 
         self.backend.run(run_image, &mounts)
     }

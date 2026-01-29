@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(jj diff:*)",
+      "Skill(superpowers:systematic-debugging)",
+      "Bash(jj show:*)",
+      "Bash(jj log:*)",
+      "Skill(commit)",
+      "Skill(jj-workspaces)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)",
+      "Bash(jj status:*)",
+      "Bash(jj file show:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo run:*)"
+    ]
+  }
+}
