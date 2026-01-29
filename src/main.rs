@@ -3,12 +3,14 @@ use tracing_subscriber::EnvFilter;
 
 use contenant::Contenant;
 
-fn main() -> Result<()> {
+fn main() -> Result<std::process::ExitCode> {
     color_eyre::install()?;
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
     let cwd = std::env::current_dir()?;
-    Contenant::new(&cwd)?.run()
+    let exit_code = Contenant::new(&cwd)?.run()?;
+
+    Ok(std::process::ExitCode::from(exit_code as u8))
 }

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use color_eyre::eyre::{Result, bail};
+use color_eyre::eyre::{OptionExt, Result, bail};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tracing::info;
@@ -38,17 +38,20 @@ impl Config {
 
 pub trait Backend {
     fn build(&self, image: &str, context: &Path) -> Result<()>;
-    fn run(&self, image: &str, mounts: &[String]) -> Result<()>;
+    fn run(&self, image: &str, mounts: &[String]) -> Result<i32>;
 }
 
 pub struct Docker;
 
 impl Backend for Docker {
-    fn build(&self, image: &str, context: &Path) -> Result<()> {
-        info!(image, "Building image");
+    fn build(&self, tag: &str, path: &Path) -> Result<()> {
+        info!(tag, "Building image");
 
+        let path = path
+            .to_str()
+            .ok_or_eyre("build context path is not valid UTF-8")?;
         let status = Command::new("docker")
-            .args(["build", "-t", image, context.to_str().unwrap()])
+            .args(["build", "-t", tag, path])
             .status()?;
 
         if !status.success() {
@@ -58,7 +61,7 @@ impl Backend for Docker {
         Ok(())
     }
 
-    fn run(&self, image: &str, mounts: &[String]) -> Result<()> {
+    fn run(&self, tag: &str, mounts: &[String]) -> Result<i32> {
         let cwd = std::env::current_dir()?;
 
         let mut cmd = Command::new("docker");
@@ -69,7 +72,7 @@ impl Backend for Docker {
             cmd.args(["-v", mount]);
         }
 
-        cmd.args(["-w", "/workspace", image]);
+        cmd.args(["-w", "/workspace", tag]);
 
         let status = cmd.status()?;
 
@@ -77,7 +80,7 @@ impl Backend for Docker {
             bail!("Container terminated by signal");
         };
 
-        std::process::exit(code);
+        Ok(code)
     }
 }
 
@@ -112,7 +115,7 @@ impl Contenant<Docker> {
 }
 
 impl<B: Backend> Contenant<B> {
-    pub fn run(&self) -> Result<()> {
+    pub fn run(&self) -> Result<i32> {
         // Build base image (Docker cache handles unchanged builds)
         let dockerfile_path = self.app_dirs.place_cache_file("Dockerfile")?;
         fs::write(&dockerfile_path, DOCKERFILE)?;
