@@ -38,6 +38,7 @@ impl Config {
 
 pub trait Backend {
     fn build(&self, image: &str, context: &Path) -> Result<()>;
+    fn tag(&self, source: &str, target: &str) -> Result<()>;
     fn run(&self, image: &str, mounts: &[String]) -> Result<i32>;
 }
 
@@ -56,6 +57,20 @@ impl Backend for Docker {
 
         if !status.success() {
             bail!("Docker build failed");
+        }
+
+        Ok(())
+    }
+
+    fn tag(&self, source: &str, target: &str) -> Result<()> {
+        info!(source, target, "Tagging image");
+
+        let status = Command::new("docker")
+            .args(["tag", source, target])
+            .status()?;
+
+        if !status.success() {
+            bail!("Docker tag failed");
         }
 
         Ok(())
@@ -132,12 +147,13 @@ impl<B: Backend> Contenant<B> {
         let context = self.app_dirs.get_cache_home().unwrap();
         self.backend.build("contenant:base", &context)?;
 
-        // Build user image if a user Dockerfile exists
-        let mut run_image = String::from("contenant:base");
+        // Build user image if a user Dockerfile exists, otherwise tag base as user
+        let mut run_image = String::from("contenant:user");
         if let Some(user_dockerfile) = self.app_dirs.find_config_file("Dockerfile") {
             let context = user_dockerfile.parent().unwrap();
             self.backend.build("contenant:user", context)?;
-            run_image = String::from("contenant:user");
+        } else {
+            self.backend.tag("contenant:base", "contenant:user")?;
         }
 
         // Build project image if .contenant/Dockerfile exists
