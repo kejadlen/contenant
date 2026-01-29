@@ -92,12 +92,11 @@ pub struct Contenant<B = Docker> {
 }
 
 fn project_id(dir: &Path) -> String {
+    let dir = std::fs::canonicalize(dir).unwrap();
     let hash = format!("{:x}", Sha256::digest(dir.as_os_str().as_encoded_bytes()));
     let short_hash = &hash[..8];
-    let name = dir
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let name = dir.file_name().unwrap().to_string_lossy();
+
     format!("{}-{}", short_hash, name)
 }
 
@@ -121,8 +120,9 @@ impl<B: Backend> Contenant<B> {
         fs::write(&dockerfile_path, DOCKERFILE)?;
         let claude_json_path = self.app_dirs.place_cache_file("claude.json")?;
         fs::write(&claude_json_path, CLAUDE_JSON)?;
-        let context = dockerfile_path.parent().unwrap();
-        self.backend.build("contenant:base", context)?;
+
+        let context = self.app_dirs.get_cache_home().unwrap();
+        self.backend.build("contenant:base", &context)?;
 
         // Build user image if a user Dockerfile exists
         let mut run_image = "contenant:base";
