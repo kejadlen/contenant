@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -14,6 +15,8 @@ const CLAUDE_JSON: &str = include_str!("../image/claude.json");
 pub struct Config {
     #[serde(default)]
     pub mounts: Vec<Mount>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,7 +42,7 @@ impl Config {
 pub trait Backend {
     fn build(&self, image: &str, context: &Path) -> Result<()>;
     fn tag(&self, source: &str, target: &str) -> Result<()>;
-    fn run(&self, image: &str, mounts: &[String]) -> Result<i32>;
+    fn run(&self, image: &str, mounts: &[String], env: &HashMap<String, String>) -> Result<i32>;
 }
 
 pub struct Docker;
@@ -76,7 +79,7 @@ impl Backend for Docker {
         Ok(())
     }
 
-    fn run(&self, tag: &str, mounts: &[String]) -> Result<i32> {
+    fn run(&self, tag: &str, mounts: &[String], env: &HashMap<String, String>) -> Result<i32> {
         let cwd = std::env::current_dir()?;
 
         let mut cmd = Command::new("docker");
@@ -85,6 +88,10 @@ impl Backend for Docker {
 
         for mount in mounts {
             cmd.args(["-v", mount]);
+        }
+
+        for (key, value) in env {
+            cmd.args(["-e", &format!("{}={}", key, value)]);
         }
 
         cmd.args(["-w", "/workspace", tag]);
@@ -209,6 +216,6 @@ impl<B: Backend> Contenant<B> {
             .collect::<Result<Vec<_>>>()?;
         mounts.extend(user_mounts);
 
-        self.backend.run(&run_image, &mounts)
+        self.backend.run(&run_image, &mounts, &self.config.env)
     }
 }
