@@ -16,7 +16,13 @@ Run from any project directory:
 contenant
 ```
 
-This mounts the current directory at `/workspace` inside the container and starts Claude Code.
+Or specify a project directory:
+
+```bash
+contenant run /path/to/project
+```
+
+This mounts the project directory at `/workspace` inside the container and starts Claude Code.
 
 Enable debug logging with `RUST_LOG=debug contenant`.
 

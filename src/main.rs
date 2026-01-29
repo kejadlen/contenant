@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
 use tracing_subscriber::EnvFilter;
@@ -14,7 +16,10 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Run Claude Code in a container
-    Run,
+    Run {
+        /// Project directory to mount (defaults to current directory)
+        path: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<std::process::ExitCode> {
@@ -25,10 +30,13 @@ fn main() -> Result<std::process::ExitCode> {
 
     let cli = Cli::parse();
 
-    match cli.command.unwrap_or(Command::Run) {
-        Command::Run => {
-            let cwd = std::env::current_dir()?;
-            let exit_code = Contenant::new(&cwd)?.run()?;
+    match cli.command.unwrap_or(Command::Run { path: None }) {
+        Command::Run { path } => {
+            let project_dir = match path {
+                Some(p) => p,
+                None => std::env::current_dir()?,
+            };
+            let exit_code = Contenant::new(&project_dir)?.run()?;
             Ok(std::process::ExitCode::from(exit_code as u8))
         }
     }
