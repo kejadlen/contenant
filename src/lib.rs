@@ -22,7 +22,7 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct Mount {
     pub source: String,
-    pub target: String,
+    pub target: Option<String>,
     #[serde(default)]
     pub readonly: bool,
 }
@@ -171,19 +171,7 @@ impl<B: Backend> Contenant<B> {
             self.backend.build(&run_image, context)?;
         }
 
-        let config_dir = self
-            .project_dirs()
-            .get_config_home()
-            .map(|p| p.to_string_lossy().trim_end_matches('/').to_string());
         let container_home = "/home/claude".to_string();
-
-        let context = |var: &str| -> Result<Option<String>, std::env::VarError> {
-            Ok(match var {
-                "CONTENANT_CONFIG_DIR" => config_dir.clone(),
-                "CONTENANT_CONTAINER_HOME" => Some(container_home.clone()),
-                _ => std::env::var(var).ok(),
-            })
-        };
 
         // Default mount: persist Claude state (auth, settings, etc.)
         let claude_state_dir = self.app_dirs.place_state_file("claude")?;
@@ -200,9 +188,11 @@ impl<B: Backend> Contenant<B> {
             .mounts
             .iter()
             .map(|mount| {
-                let home_dir = || dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
-                let source = shellexpand::full_with_context(&mount.source, home_dir, &context)?;
-                let target = shellexpand::full_with_context(&mount.target, home_dir, &context)?;
+                let host_home = || dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
+                let container_home = || Some(container_home.clone());
+                let source = shellexpand::tilde_with_context(&mount.source, host_home);
+                let target_str = mount.target.as_deref().unwrap_or(&mount.source);
+                let target = shellexpand::tilde_with_context(target_str, container_home);
                 // Resolve relative source paths from config directory
                 let source_path = Path::new(source.as_ref());
                 let source = if source_path.is_relative() {
@@ -216,6 +206,17 @@ impl<B: Backend> Contenant<B> {
             .collect::<Result<Vec<_>>>()?;
         mounts.extend(user_mounts);
 
-        self.backend.run(&run_image, &mounts, &self.config.env)
+        let container_home = || Some(container_home.clone());
+        let env = self
+            .config
+            .env
+            .iter()
+            .map(|(key, value)| {
+                let value = shellexpand::tilde_with_context(value, container_home);
+                Ok((key.clone(), value.into_owned()))
+            })
+            .collect::<Result<HashMap<_, _>>>()?;
+
+        self.backend.run(&run_image, &mounts, &env)
     }
 }
