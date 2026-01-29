@@ -27,6 +27,32 @@ pub struct Mount {
     pub readonly: bool,
 }
 
+const CONTAINER_HOME: &str = "/home/claude";
+
+impl Mount {
+    /// Format as a Docker volume mount string.
+    ///
+    /// Relative source paths are resolved from `config_dir`.
+    pub fn to_docker_volume(&self, config_dir: &Path) -> String {
+        let host_home = || dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
+        let container_home = || Some(CONTAINER_HOME.to_string());
+
+        let source = shellexpand::tilde_with_context(&self.source, host_home);
+        let target_str = self.target.as_deref().unwrap_or(&self.source);
+        let target = shellexpand::tilde_with_context(target_str, container_home);
+
+        let source_path = Path::new(source.as_ref());
+        let source = if source_path.is_relative() {
+            config_dir.join(source_path).to_string_lossy().into_owned()
+        } else {
+            source.into_owned()
+        };
+
+        let suffix = if self.readonly { ":ro" } else { "" };
+        format!("{}:{}{}", source, target, suffix)
+    }
+}
+
 impl Config {
     pub fn load(xdg_dirs: &xdg::BaseDirectories) -> Result<Self> {
         let Some(config_path) = xdg_dirs.find_config_file("config.yml") else {
@@ -124,10 +150,6 @@ impl<B> Contenant<B> {
 
         format!("{}-{}", short_hash, name)
     }
-
-    fn project_dirs(&self) -> xdg::BaseDirectories {
-        xdg::BaseDirectories::with_profile("contenant", self.project_id())
-    }
 }
 
 impl Contenant<Docker> {
@@ -171,52 +193,117 @@ impl<B: Backend> Contenant<B> {
             self.backend.build(&run_image, context)?;
         }
 
-        let container_home = "/home/claude".to_string();
-
         // Default mount: persist Claude state (auth, settings, etc.)
         let claude_state_dir = self.app_dirs.place_state_file("claude")?;
         fs::create_dir_all(&claude_state_dir)?;
         let mut mounts = vec![format!(
-            "{}:/home/claude/.claude",
-            claude_state_dir.display()
+            "{}:{}/.claude",
+            claude_state_dir.display(),
+            CONTAINER_HOME
         )];
 
         // User-defined mounts (can shadow subdirectories of defaults)
         let config_dir = self.app_dirs.get_config_home().unwrap();
-        let user_mounts = self
+        let user_mounts: Vec<_> = self
             .config
             .mounts
             .iter()
-            .map(|mount| {
-                let host_home = || dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
-                let container_home = || Some(container_home.clone());
-                let source = shellexpand::tilde_with_context(&mount.source, host_home);
-                let target_str = mount.target.as_deref().unwrap_or(&mount.source);
-                let target = shellexpand::tilde_with_context(target_str, container_home);
-                // Resolve relative source paths from config directory
-                let source_path = Path::new(source.as_ref());
-                let source = if source_path.is_relative() {
-                    config_dir.join(source_path).to_string_lossy().into_owned()
-                } else {
-                    source.into_owned()
-                };
-                let suffix = if mount.readonly { ":ro" } else { "" };
-                Ok(format!("{}:{}{}", source, target, suffix))
-            })
-            .collect::<Result<Vec<_>>>()?;
+            .map(|mount| mount.to_docker_volume(&config_dir))
+            .collect();
         mounts.extend(user_mounts);
 
-        let container_home = || Some(container_home.clone());
-        let env = self
+        let env: HashMap<_, _> = self
             .config
             .env
             .iter()
             .map(|(key, value)| {
-                let value = shellexpand::tilde_with_context(value, container_home);
-                Ok((key.clone(), value.into_owned()))
+                let value =
+                    shellexpand::tilde_with_context(value, || Some(CONTAINER_HOME.to_string()));
+                (key.clone(), value.into_owned())
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .collect();
 
         self.backend.run(&run_image, &mounts, &env)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mount_absolute_paths() {
+        let mount = Mount {
+            source: "/host/path".to_string(),
+            target: Some("/container/path".to_string()),
+            readonly: false,
+        };
+        assert_eq!(
+            mount.to_docker_volume(Path::new("/config")),
+            "/host/path:/container/path"
+        );
+    }
+
+    #[test]
+    fn mount_target_defaults_to_source() {
+        let mount = Mount {
+            source: "/shared/path".to_string(),
+            target: None,
+            readonly: false,
+        };
+        assert_eq!(
+            mount.to_docker_volume(Path::new("/config")),
+            "/shared/path:/shared/path"
+        );
+    }
+
+    #[test]
+    fn mount_tilde_in_target_expands_to_container_home() {
+        let mount = Mount {
+            source: "/host/path".to_string(),
+            target: Some("~/.config".to_string()),
+            readonly: false,
+        };
+        assert_eq!(
+            mount.to_docker_volume(Path::new("/config")),
+            "/host/path:/home/claude/.config"
+        );
+    }
+
+    #[test]
+    fn mount_tilde_target_defaults_to_source_with_container_home() {
+        let mount = Mount {
+            source: "~/.ssh".to_string(),
+            target: None,
+            readonly: false,
+        };
+        let result = mount.to_docker_volume(Path::new("/config"));
+        assert!(result.ends_with(":/home/claude/.ssh"));
+    }
+
+    #[test]
+    fn mount_relative_source_resolved_from_config_dir() {
+        let mount = Mount {
+            source: "relative/path".to_string(),
+            target: Some("/container/path".to_string()),
+            readonly: false,
+        };
+        assert_eq!(
+            mount.to_docker_volume(Path::new("/config")),
+            "/config/relative/path:/container/path"
+        );
+    }
+
+    #[test]
+    fn mount_readonly() {
+        let mount = Mount {
+            source: "/host/path".to_string(),
+            target: Some("/container/path".to_string()),
+            readonly: true,
+        };
+        assert_eq!(
+            mount.to_docker_volume(Path::new("/config")),
+            "/host/path:/container/path:ro"
+        );
     }
 }
