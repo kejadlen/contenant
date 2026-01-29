@@ -12,7 +12,8 @@
       "Bash(jj status:*)",
       "Bash(jj file show:*)",
       "Bash(cargo check:*)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Bash(just all:*)"
     ]
   }
 }

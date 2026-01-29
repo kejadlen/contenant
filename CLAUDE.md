@@ -24,7 +24,8 @@ Contenant runs Claude Code inside Docker containers with persistent state and co
 1. Writes embedded Dockerfile and claude.json from `image/` to XDG cache
 2. Builds base image (`contenant:base`)
 3. Optionally builds user image (`contenant:user`) if user provides `~/.config/contenant/Dockerfile`
-4. Runs container with workspace mounted at `/workspace` and Claude state persisted
+4. Optionally builds project image (`contenant:<project-id>`) if `.contenant/Dockerfile` exists in project root
+5. Runs container with workspace mounted at `/workspace` and Claude state persisted
 
 **Backend trait:** `Backend` abstracts container operations (build/run). Currently only `Docker` implements it, but the design allows swapping runtimes.
 
@@ -33,6 +34,10 @@ Contenant runs Claude Code inside Docker containers with persistent state and co
 **Project isolation:** Each project gets unique XDG directories via `project_id()` which hashes the canonical project path.
 
 **Embedded files:** `image/Dockerfile` and `image/claude.json` are compiled into the binary via `include_str!`.
+
+## Verification
+
+Run `just all` after completing each chunk of work.
 
 ## Maintaining This File
 

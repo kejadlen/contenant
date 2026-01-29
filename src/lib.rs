@@ -88,27 +88,35 @@ pub struct Contenant<B = Docker> {
     backend: B,
     config: Config,
     app_dirs: xdg::BaseDirectories,
-    project_dirs: xdg::BaseDirectories,
+    project_dir: std::path::PathBuf,
 }
 
-fn project_id(dir: &Path) -> String {
-    let dir = std::fs::canonicalize(dir).unwrap();
-    let hash = format!("{:x}", Sha256::digest(dir.as_os_str().as_encoded_bytes()));
-    let short_hash = &hash[..8];
-    let name = dir.file_name().unwrap().to_string_lossy();
+impl<B> Contenant<B> {
+    fn project_id(&self) -> String {
+        let hash = format!(
+            "{:x}",
+            Sha256::digest(self.project_dir.as_os_str().as_encoded_bytes())
+        );
+        let short_hash = &hash[..8];
+        let name = self.project_dir.file_name().unwrap().to_string_lossy();
 
-    format!("{}-{}", short_hash, name)
+        format!("{}-{}", short_hash, name)
+    }
+
+    fn project_dirs(&self) -> xdg::BaseDirectories {
+        xdg::BaseDirectories::with_profile("contenant", self.project_id())
+    }
 }
 
 impl Contenant<Docker> {
     pub fn new(project_dir: &Path) -> Result<Self> {
         let app_dirs = xdg::BaseDirectories::with_prefix("contenant");
-        let project_dirs = xdg::BaseDirectories::with_profile("contenant", project_id(project_dir));
+        let project_dir = std::fs::canonicalize(project_dir)?;
         Ok(Self {
             backend: Docker,
             config: Config::load(&app_dirs)?,
             app_dirs,
-            project_dirs,
+            project_dir,
         })
     }
 }
@@ -125,15 +133,23 @@ impl<B: Backend> Contenant<B> {
         self.backend.build("contenant:base", &context)?;
 
         // Build user image if a user Dockerfile exists
-        let mut run_image = "contenant:base";
+        let mut run_image = String::from("contenant:base");
         if let Some(user_dockerfile) = self.app_dirs.find_config_file("Dockerfile") {
             let context = user_dockerfile.parent().unwrap();
             self.backend.build("contenant:user", context)?;
-            run_image = "contenant:user";
+            run_image = String::from("contenant:user");
+        }
+
+        // Build project image if .contenant/Dockerfile exists
+        let project_dockerfile = self.project_dir.join(".contenant/Dockerfile");
+        if project_dockerfile.exists() {
+            let context = project_dockerfile.parent().unwrap();
+            run_image = format!("contenant:{}", self.project_id());
+            self.backend.build(&run_image, context)?;
         }
 
         let config_dir = self
-            .project_dirs
+            .project_dirs()
             .get_config_home()
             .map(|p| p.to_string_lossy().trim_end_matches('/').to_string());
         let container_home = "/home/claude".to_string();
@@ -177,6 +193,6 @@ impl<B: Backend> Contenant<B> {
             .collect::<Result<Vec<_>>>()?;
         mounts.extend(user_mounts);
 
-        self.backend.run(run_image, &mounts)
+        self.backend.run(&run_image, &mounts)
     }
 }
