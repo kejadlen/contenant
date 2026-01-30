@@ -4,13 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+axum = "*"
 clap = { version = "*", features = ["derive"] }
 color-eyre = "*"
-sha2 = "*"
 dirs = "*"
 serde = { version = "*", features = ["derive"] }
+serde_json = "*"
 serde_yaml_ng = "*"
+sha2 = "*"
 shellexpand = "*"
+tokio = { version = "*", features = ["full"] }
 tracing = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
 xdg = "*"

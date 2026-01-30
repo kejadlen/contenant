@@ -84,3 +84,50 @@ RUN cargo install cargo-watch
 Claude authentication and settings persist across runs in `~/.local/state/contenant/claude/`.
 
 Each project gets isolated XDG directories based on its path hash.
+
+## Bridge and Triggers
+
+The bridge is a host-side HTTP server that allows Claude Code running inside the container to execute predefined commands on the host machine. This enables workflows like opening files in your editor or sending notifications.
+
+### Configuration
+
+Add a `bridge` section to `~/.config/contenant/config.yml`:
+
+```yaml
+bridge:
+  port: 19432  # optional, this is the default
+  triggers:
+    open-editor: "code ."
+    notify: "notify-send 'Task completed'"
+    open-browser: "xdg-open https://example.com"
+```
+
+### Starting the Bridge
+
+Run the bridge server in a separate terminal before starting the container:
+
+```bash
+contenant bridge
+```
+
+### Using Triggers from the Container
+
+Inside the container, the `CONTENANT_BRIDGE_URL` environment variable points to the bridge server. Claude Code (or any process in the container) can invoke triggers via HTTP:
+
+```bash
+curl -X POST "$CONTENANT_BRIDGE_URL/triggers/open-editor"
+```
+
+The response includes the command's exit code, stdout, and stderr:
+
+```json
+{
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": ""
+}
+```
+
+### Security Note
+
+Triggers execute shell commands on your host machine. Only define triggers you trust and be mindful of what commands you expose.

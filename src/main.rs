@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
 use tracing_subscriber::EnvFilter;
 
-use contenant::Contenant;
+use contenant::{Config, Contenant, bridge};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -20,6 +20,8 @@ enum Command {
         /// Project directory to mount (defaults to current directory)
         path: Option<PathBuf>,
     },
+    /// Start the host command bridge server
+    Bridge,
 }
 
 fn main() -> Result<std::process::ExitCode> {
@@ -38,6 +40,13 @@ fn main() -> Result<std::process::ExitCode> {
             };
             let exit_code = Contenant::new(&project_dir)?.run()?;
             Ok(std::process::ExitCode::from(exit_code as u8))
+        }
+        Command::Bridge => {
+            let xdg_dirs = xdg::BaseDirectories::with_prefix("contenant");
+            let config = Config::load(&xdg_dirs)?;
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(bridge::serve(config.bridge.port, config.bridge.triggers))?;
+            Ok(std::process::ExitCode::SUCCESS)
         }
     }
 }

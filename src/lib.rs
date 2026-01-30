@@ -1,15 +1,21 @@
+pub mod bridge;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
 use color_eyre::eyre::{OptionExt, Result, bail};
+use dirs::home_dir;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use shellexpand::tilde_with_context;
 use tracing::info;
 
 const DOCKERFILE: &str = include_str!("../image/Dockerfile");
 const CLAUDE_JSON: &str = include_str!("../image/claude.json");
+
+const DEFAULT_BRIDGE_PORT: u16 = 19432;
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Config {
@@ -17,6 +23,29 @@ pub struct Config {
     pub mounts: Vec<Mount>,
     #[serde(default)]
     pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub bridge: BridgeConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BridgeConfig {
+    #[serde(default = "default_bridge_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub triggers: HashMap<String, String>,
+}
+
+fn default_bridge_port() -> u16 {
+    DEFAULT_BRIDGE_PORT
+}
+
+impl Default for BridgeConfig {
+    fn default() -> Self {
+        Self {
+            port: DEFAULT_BRIDGE_PORT,
+            triggers: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,12 +63,12 @@ impl Mount {
     ///
     /// Relative source paths are resolved from `config_dir`.
     pub fn to_docker_volume(&self, config_dir: &Path) -> String {
-        let host_home = || dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
+        let host_home = || home_dir().map(|p| p.to_string_lossy().into_owned());
         let container_home = || Some(CONTAINER_HOME.to_string());
 
-        let source = shellexpand::tilde_with_context(&self.source, host_home);
+        let source = tilde_with_context(&self.source, host_home);
         let target_str = self.target.as_deref().unwrap_or(&self.source);
-        let target = shellexpand::tilde_with_context(target_str, container_home);
+        let target = tilde_with_context(target_str, container_home);
 
         let source_path = Path::new(source.as_ref());
         let source = if source_path.is_relative() {
@@ -110,6 +139,7 @@ impl Backend for Docker {
 
         let mut cmd = Command::new("docker");
         cmd.args(["run", "-it", "--rm"]);
+        cmd.args(["--add-host", "host.docker.internal:host-gateway"]);
         cmd.args(["-v", &format!("{}:/workspace", cwd.display())]);
 
         for mount in mounts {
@@ -212,16 +242,20 @@ impl<B: Backend> Contenant<B> {
             .collect();
         mounts.extend(user_mounts);
 
-        let env: HashMap<_, _> = self
+        let mut env: HashMap<_, _> = self
             .config
             .env
             .iter()
             .map(|(key, value)| {
-                let value =
-                    shellexpand::tilde_with_context(value, || Some(CONTAINER_HOME.to_string()));
+                let value = tilde_with_context(value, || Some(CONTAINER_HOME.to_string()));
                 (key.clone(), value.into_owned())
             })
             .collect();
+
+        env.insert(
+            "CONTENANT_BRIDGE_URL".to_string(),
+            format!("http://host.docker.internal:{}", self.config.bridge.port),
+        );
 
         self.backend.run(&run_image, &mounts, &env)
     }
@@ -304,6 +338,54 @@ mod tests {
         assert_eq!(
             mount.to_docker_volume(Path::new("/config")),
             "/host/path:/container/path:ro"
+        );
+    }
+
+    #[test]
+    fn bridge_config_defaults() {
+        let config: BridgeConfig = serde_yaml_ng::from_str("{}").unwrap();
+        assert_eq!(config.port, 19432);
+        assert!(config.triggers.is_empty());
+    }
+
+    #[test]
+    fn bridge_config_custom_port() {
+        let config: BridgeConfig = serde_yaml_ng::from_str("port: 8080").unwrap();
+        assert_eq!(config.port, 8080);
+    }
+
+    #[test]
+    fn bridge_config_with_triggers() {
+        let yaml = r#"
+triggers:
+  open-editor: "code ."
+  notify: "notify-send 'Done'"
+"#;
+        let config: BridgeConfig = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(config.triggers.len(), 2);
+        assert_eq!(
+            config.triggers.get("open-editor"),
+            Some(&"code .".to_string())
+        );
+        assert_eq!(
+            config.triggers.get("notify"),
+            Some(&"notify-send 'Done'".to_string())
+        );
+    }
+
+    #[test]
+    fn config_with_bridge_section() {
+        let yaml = r#"
+bridge:
+  port: 9000
+  triggers:
+    test: "echo test"
+"#;
+        let config: Config = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(config.bridge.port, 9000);
+        assert_eq!(
+            config.bridge.triggers.get("test"),
+            Some(&"echo test".to_string())
         );
     }
 }
