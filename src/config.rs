@@ -9,6 +9,8 @@ use shellexpand::tilde_with_context;
 
 pub const DEFAULT_BRIDGE_PORT: u16 = 19432;
 
+pub const DEFAULT_ALLOWED_DOMAINS: &[&str] = &["api.github.com", "github.com", "api.anthropic.com"];
+
 pub const CONTAINER_HOME: &str = "/home/claude";
 
 #[derive(Debug, Default, Deserialize)]
@@ -21,6 +23,8 @@ pub struct Config {
     pub env: HashMap<String, String>,
     #[serde(default)]
     pub bridge: BridgeConfig,
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,7 +169,17 @@ impl StackedConfig {
     pub fn with_defaults() -> Self {
         let mut config = Self::default();
         // Default layer has no meaningful config dir; use root as placeholder.
-        config.add_layer(ConfigSource::Default, Config::default(), PathBuf::from("/"));
+        config.add_layer(
+            ConfigSource::Default,
+            Config {
+                allowed_domains: DEFAULT_ALLOWED_DOMAINS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                ..Config::default()
+            },
+            PathBuf::from("/"),
+        );
         config
     }
 
@@ -240,6 +254,16 @@ impl StackedConfig {
         }
 
         BridgeConfig { port, triggers }
+    }
+
+    /// Last layer to set `allowed_domains` wins.
+    pub fn allowed_domains(&self) -> &[String] {
+        self.layers
+            .iter()
+            .rev()
+            .find(|l| !l.data.allowed_domains.is_empty())
+            .map(|l| l.data.allowed_domains.as_slice())
+            .unwrap_or_default()
     }
 }
 
@@ -379,6 +403,13 @@ bridge:
         assert!(config.env().is_empty());
         assert_eq!(config.bridge().port, DEFAULT_BRIDGE_PORT);
         assert!(config.bridge().triggers.is_empty());
+        assert_eq!(
+            config.allowed_domains(),
+            DEFAULT_ALLOWED_DOMAINS
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

@@ -9,14 +9,17 @@ clap = { version = "*", features = ["derive"] }
 clap_complete = { version = "*", features = ["unstable-dynamic"] }
 color-eyre = "*"
 dirs = "*"
+hickory-resolver = "*"
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
 serde_yaml_ng = "*"
 sha2 = "*"
 shellexpand = "*"
 tokio = { version = "*", features = ["full"] }
+tempfile = "*"
 tracing = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
+ureq = { version = "*", features = ["json"] }
 xdg = "*"
 
 [dev-dependencies]

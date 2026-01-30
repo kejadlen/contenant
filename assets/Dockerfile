@@ -5,6 +5,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     ca-certificates \
+    iptables \
+    ipset \
+    iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -25,4 +28,9 @@ RUN curl -fsSL https://claude.ai/install.sh | bash${CLAUDE_VERSION:+ -s -- $CLAU
 # Pre-configure Claude to skip onboarding and trust /workspace
 COPY claude.json /home/claude/.claude.json
 
-ENTRYPOINT ["claude"]
+# Entrypoint runs as root to configure firewall, then drops to claude
+USER root
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
