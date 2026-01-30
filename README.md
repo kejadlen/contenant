@@ -28,19 +28,31 @@ Enable debug logging with `RUST_LOG=debug contenant`.
 
 ## Configuration
 
-Create `~/.config/contenant/config.yml` to define additional mounts:
+Create `~/.config/contenant/config.yml` to define additional mounts and environment variables:
 
 ```yaml
 mounts:
-  - source: $HOME/.ssh
-    target: /home/claude/.ssh
+  - source: ~/.ssh
+    target: ~/.ssh
     readonly: true
-  - source: $HOME/.gitconfig
-    target: /home/claude/.gitconfig
+  - source: ~/.gitconfig
+    target: ~/.gitconfig
     readonly: true
+
+env:
+  ANTHROPIC_API_KEY: sk-ant-...
 ```
 
-Supported variables: `$HOME`, `$CONTENANT_CONFIG_DIR`, `$CONTENANT_CONTAINER_HOME`, and any environment variable.
+### Mounts
+
+- `~` in `source` expands to the host home directory
+- `~` in `target` expands to the container home (`/home/claude`)
+- `target` is optional and defaults to `source` (with tilde expanded for the container)
+- Relative source paths resolve from the config directory (`~/.config/contenant/`)
+
+### Environment Variables
+
+The `env` map passes environment variables into the container. Values support tilde expansion to the container home directory.
 
 ## Image Layering
 
