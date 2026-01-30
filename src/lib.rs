@@ -236,8 +236,18 @@ impl<B: Backend> Contenant<B> {
             CONTAINER_HOME
         )];
 
-        // User-defined mounts (can shadow subdirectories of defaults)
+        // Mount skills directory if it exists
         let config_dir = self.app_dirs.get_config_home().unwrap();
+        let skills_dir = config_dir.join("skills");
+        if skills_dir.exists() {
+            mounts.push(format!(
+                "{}:{}/.claude/skills",
+                skills_dir.display(),
+                CONTAINER_HOME
+            ));
+        }
+
+        // User-defined mounts (can shadow subdirectories of defaults)
         let user_mounts: Vec<_> = self
             .config
             .mounts

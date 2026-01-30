@@ -82,6 +82,10 @@ Claude authentication and settings persist across runs in `~/.local/state/conten
 
 Each project gets isolated XDG directories based on its path hash.
 
+## Skills
+
+If `~/.config/contenant/skills/` exists, it is automatically mounted to `~/.claude/skills/` inside the container. This allows you to share Claude Code skills between the host and container.
+
 ## Bridge and Triggers
 
 The bridge is a host-side HTTP server that allows Claude Code running inside the container to execute predefined commands on the host machine. This enables workflows like opening files in your editor or sending notifications.
