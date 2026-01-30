@@ -247,6 +247,17 @@ impl<B: Backend> Contenant<B> {
             ));
         }
 
+        // Persist SSH known_hosts across sessions
+        let known_hosts_file = self.app_dirs.place_state_file("ssh/known_hosts")?;
+        if !known_hosts_file.exists() {
+            fs::write(&known_hosts_file, "")?;
+        }
+        mounts.push(format!(
+            "{}:{}/.ssh/known_hosts",
+            known_hosts_file.display(),
+            CONTAINER_HOME
+        ));
+
         // User-defined mounts (can shadow subdirectories of defaults)
         let user_mounts: Vec<_> = self
             .config

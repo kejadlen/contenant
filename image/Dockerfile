@@ -14,6 +14,9 @@ USER claude
 WORKDIR /home/claude
 ENV PATH="/home/claude/.local/bin:$PATH"
 
+# Create .ssh directory for known_hosts mount
+RUN mkdir -p /home/claude/.ssh && chmod 700 /home/claude/.ssh
+
 # Install Claude Code via native installer
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
