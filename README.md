@@ -34,6 +34,11 @@ Create `~/.config/contenant/config.yml` to define additional mounts and environm
 mounts:
   - source: ~/.ssh
   - source: ~/.gitconfig
+  - source: /data/shared
+    target: /mnt/data
+  - source: scripts/setup.sh
+    target: /usr/local/bin/setup.sh
+    readonly: true
 
 env:
   ANTHROPIC_API_KEY: sk-ant-...
@@ -41,11 +46,39 @@ env:
 
 ### Mounts
 
-- `~` in `source` expands to the host home directory
-- `~` in `target` expands to the container home (`/home/claude`)
-- `target` is optional and defaults to `source` (with tilde expanded for the container)
-- Relative source paths resolve from the config directory (`~/.config/contenant/`)
-- Mounts are readonly by default; set `readonly: false` for read-write access
+`~` expands to the host home in `source` and to the container home (`/home/claude`) in `target`:
+
+```yaml
+- source: ~/.ssh
+  target: ~/.ssh
+  readonly: true
+# /home/you/.ssh → /home/claude/.ssh (read-only)
+```
+
+When `target` is omitted it defaults to `source`, with `~` expanded for the container:
+
+```yaml
+- source: ~/.gitconfig
+# /home/you/.gitconfig → /home/claude/.gitconfig
+```
+
+Absolute paths are passed through as-is:
+
+```yaml
+- source: /data/shared
+  target: /mnt/data
+# /data/shared → /mnt/data
+```
+
+Relative source paths resolve from the config directory (`~/.config/contenant/`):
+
+```yaml
+- source: scripts/setup.sh
+  target: /usr/local/bin/setup.sh
+# ~/.config/contenant/scripts/setup.sh → /usr/local/bin/setup.sh
+```
+
+Mounts are readonly by default; set `readonly: false` for read-write access.
 
 ### Environment Variables
 
