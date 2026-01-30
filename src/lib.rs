@@ -52,8 +52,12 @@ impl Default for BridgeConfig {
 pub struct Mount {
     pub source: String,
     pub target: Option<String>,
-    #[serde(default)]
+    #[serde(default = "default_readonly")]
     pub readonly: bool,
+}
+
+fn default_readonly() -> bool {
+    true
 }
 
 const CONTAINER_HOME: &str = "/home/claude";

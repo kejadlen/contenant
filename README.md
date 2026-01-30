@@ -33,11 +33,7 @@ Create `~/.config/contenant/config.yml` to define additional mounts and environm
 ```yaml
 mounts:
   - source: ~/.ssh
-    target: ~/.ssh
-    readonly: true
   - source: ~/.gitconfig
-    target: ~/.gitconfig
-    readonly: true
 
 env:
   ANTHROPIC_API_KEY: sk-ant-...
@@ -49,6 +45,7 @@ env:
 - `~` in `target` expands to the container home (`/home/claude`)
 - `target` is optional and defaults to `source` (with tilde expanded for the container)
 - Relative source paths resolve from the config directory (`~/.config/contenant/`)
+- Mounts are readonly by default; set `readonly: false` for read-write access
 
 ### Environment Variables
 
