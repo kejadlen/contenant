@@ -20,6 +20,8 @@ const DEFAULT_BRIDGE_PORT: u16 = 19432;
 #[derive(Debug, Default, Deserialize)]
 pub struct Config {
     #[serde(default)]
+    pub claude: ClaudeConfig,
+    #[serde(default)]
     pub mounts: Vec<Mount>,
     #[serde(default)]
     pub env: HashMap<String, String>,
@@ -46,6 +48,12 @@ impl Default for BridgeConfig {
             triggers: HashMap::new(),
         }
     }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ClaudeConfig {
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
