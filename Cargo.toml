@@ -17,3 +17,6 @@ tokio = { version = "*", features = ["full"] }
 tracing = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
 xdg = "*"
+
+[dev-dependencies]
+tempfile = "*"
