@@ -18,7 +18,8 @@ ENV PATH="/home/claude/.local/bin:$PATH"
 RUN mkdir -p /home/claude/.ssh && chmod 700 /home/claude/.ssh
 
 # Install Claude Code via native installer
-RUN curl -fsSL https://claude.ai/install.sh | bash
+ARG CLAUDE_VERSION=
+RUN curl -fsSL https://claude.ai/install.sh | bash${CLAUDE_VERSION:+ -s -- $CLAUDE_VERSION}
 
 # Pre-configure Claude to skip onboarding and trust /workspace
 COPY claude.json /home/claude/.claude.json
