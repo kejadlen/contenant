@@ -101,7 +101,13 @@ impl Config {
 pub trait Backend {
     fn build(&self, image: &str, context: &Path) -> Result<()>;
     fn tag(&self, source: &str, target: &str) -> Result<()>;
-    fn run(&self, image: &str, mounts: &[String], env: &HashMap<String, String>) -> Result<i32>;
+    fn run(
+        &self,
+        image: &str,
+        mounts: &[String],
+        env: &HashMap<String, String>,
+        args: &[String],
+    ) -> Result<i32>;
 }
 
 pub struct Docker;
@@ -138,7 +144,13 @@ impl Backend for Docker {
         Ok(())
     }
 
-    fn run(&self, tag: &str, mounts: &[String], env: &HashMap<String, String>) -> Result<i32> {
+    fn run(
+        &self,
+        tag: &str,
+        mounts: &[String],
+        env: &HashMap<String, String>,
+        args: &[String],
+    ) -> Result<i32> {
         let cwd = std::env::current_dir()?;
 
         let mut cmd = Command::new("docker");
@@ -155,6 +167,7 @@ impl Backend for Docker {
         }
 
         cmd.args(["-w", "/workspace", tag]);
+        cmd.args(args);
 
         let status = cmd.status()?;
 
@@ -200,7 +213,7 @@ impl Contenant<Docker> {
 }
 
 impl<B: Backend> Contenant<B> {
-    pub fn run(&self) -> Result<i32> {
+    pub fn run(&self, args: &[String]) -> Result<i32> {
         // Build base image (Docker cache handles unchanged builds)
         let dockerfile_path = self.app_dirs.place_cache_file("Dockerfile")?;
         fs::write(&dockerfile_path, DOCKERFILE)?;
@@ -282,7 +295,7 @@ impl<B: Backend> Contenant<B> {
             format!("http://host.docker.internal:{}", self.config.bridge.port),
         );
 
-        self.backend.run(&run_image, &mounts, &env)
+        self.backend.run(&run_image, &mounts, &env, args)
     }
 }
 
