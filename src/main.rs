@@ -32,7 +32,7 @@ enum Command {
 }
 
 /// Output of `claude --help`, used as fallback when claude is not installed.
-const CLAUDE_HELP: &str = include_str!("claude_help.txt");
+const CLAUDE_HELP: &str = include_str!("../assets/claude_help_2.1.29.txt");
 
 fn complete_claude_args(current: &OsStr) -> Vec<CompletionCandidate> {
     let current = current.to_str().unwrap_or_default();

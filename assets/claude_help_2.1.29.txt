@@ -1,4 +1,3 @@
-// Captured from claude 2.1.29
 Usage: claude [options] [command] [prompt]
 
 Claude Code - starts an interactive session by default, use -p/--print for

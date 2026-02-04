@@ -12,8 +12,8 @@ use sha2::{Digest, Sha256};
 use shellexpand::tilde_with_context;
 use tracing::info;
 
-const DOCKERFILE: &str = include_str!("../image/Dockerfile");
-const CLAUDE_JSON: &str = include_str!("../image/claude.json");
+const DOCKERFILE: &str = include_str!("../assets/Dockerfile");
+const CLAUDE_JSON: &str = include_str!("../assets/claude.json");
 
 const DEFAULT_BRIDGE_PORT: u16 = 19432;
 

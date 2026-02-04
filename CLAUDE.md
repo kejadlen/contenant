@@ -29,7 +29,7 @@ If no subcommand is given, `run .` is assumed.
 Contenant runs Claude Code inside Docker containers with persistent state and configurable mounts.
 
 **Core flow:** `main.rs` parses CLI args (clap) and delegates to `Contenant::run()` in `lib.rs`, which:
-1. Writes embedded Dockerfile and claude.json from `image/` to XDG cache
+1. Writes embedded Dockerfile and claude.json from `assets/` to XDG cache
 2. Builds base image (`contenant:base`)
 3. Optionally builds user image (`contenant:user`) if user provides `~/.config/contenant/Dockerfile`
 4. Optionally builds project image (`contenant:<project-id>`) if `.contenant/Dockerfile` exists in project root
@@ -38,7 +38,7 @@ Contenant runs Claude Code inside Docker containers with persistent state and co
 
 **Backend trait:** `Backend` (build/tag/run) abstracts container operations. Only `Docker` implements it currently.
 
-**Embedded files:** `image/Dockerfile` and `image/claude.json` compiled into the binary via `include_str!`.
+**Embedded files:** Files in `assets/` are compiled into the binary via `include_str!`.
 
 **Project isolation:** `project_id()` produces `<8-char-sha256>-<dirname>` from the canonical project path.
 

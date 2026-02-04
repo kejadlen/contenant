@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
 # Create non-root user
 RUN useradd -m -s /bin/bash claude
 
+# Install Claude Code as claude user
 USER claude
 WORKDIR /home/claude
 ENV PATH="/home/claude/.local/bin:$PATH"
