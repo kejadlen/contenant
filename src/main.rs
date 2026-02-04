@@ -31,21 +31,26 @@ enum Command {
     Bridge,
 }
 
+/// Output of `claude --help`, used as fallback when claude is not installed.
+const CLAUDE_HELP: &str = include_str!("claude_help.txt");
+
 fn complete_claude_args(current: &OsStr) -> Vec<CompletionCandidate> {
     let current = current.to_str().unwrap_or_default();
 
-    // Only complete flags
     if !current.starts_with('-') {
         return vec![];
     }
 
-    let Ok(output) = ProcessCommand::new("claude").arg("--help").output() else {
-        return vec![];
-    };
-    let Ok(help) = String::from_utf8(output.stdout) else {
-        return vec![];
-    };
+    let help = ProcessCommand::new("claude")
+        .arg("--help")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok());
 
+    parse_help_flags(help.as_deref().unwrap_or(CLAUDE_HELP), current)
+}
+
+fn parse_help_flags(help: &str, prefix: &str) -> Vec<CompletionCandidate> {
     let mut candidates = vec![];
     for line in help.lines() {
         let trimmed = line.trim();
@@ -53,11 +58,9 @@ fn complete_claude_args(current: &OsStr) -> Vec<CompletionCandidate> {
             continue;
         }
 
-        // Parse flags from help lines like "  -p, --print  Description"
         for part in trimmed.split_whitespace() {
             let flag = part.trim_end_matches(',');
-            if flag.starts_with('-') && flag.starts_with(current) {
-                // Extract description: everything after the last flag+value
+            if flag.starts_with('-') && flag.starts_with(prefix) {
                 let help_text = trimmed
                     .split_whitespace()
                     .skip_while(|w| w.starts_with('-') || w.starts_with('<'))
@@ -72,7 +75,6 @@ fn complete_claude_args(current: &OsStr) -> Vec<CompletionCandidate> {
             }
         }
     }
-
     candidates
 }
 
