@@ -165,3 +165,20 @@ The response includes the command's exit code, stdout, and stderr:
 ### Security Note
 
 Triggers execute shell commands on your host machine. Only define triggers you trust and be mindful of what commands you expose.
+
+## Shell Completions
+
+Add to your shell configuration:
+
+```bash
+# bash (~/.bashrc)
+source <(COMPLETE=bash contenant)
+
+# zsh (~/.zshrc)
+source <(COMPLETE=zsh contenant)
+
+# fish (~/.config/fish/config.fish)
+COMPLETE=fish contenant | source
+```
+
+Completions include claude's own flags after `--` in the `run` subcommand.

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 axum = "*"
 clap = { version = "*", features = ["derive"] }
+clap_complete = { version = "*", features = ["unstable-dynamic"] }
 color-eyre = "*"
 dirs = "*"
 serde = { version = "*", features = ["derive"] }
