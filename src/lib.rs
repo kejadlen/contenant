@@ -95,14 +95,115 @@ impl Mount {
 }
 
 impl Config {
-    pub fn load(xdg_dirs: &xdg::BaseDirectories) -> Result<Self> {
-        let Some(config_path) = xdg_dirs.find_config_file("config.yml") else {
-            return Ok(Self::default());
-        };
-
-        let contents = fs::read_to_string(config_path)?;
+    fn load_file(path: &Path) -> Result<Self> {
+        let contents = fs::read_to_string(path)?;
         let config = serde_yaml_ng::from_str(&contents)?;
         Ok(config)
+    }
+}
+
+/// Source of a configuration layer, ordered by precedence (lowest first).
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum ConfigSource {
+    /// User-level config (~/.config/contenant/config.yml).
+    User,
+}
+
+impl std::fmt::Display for ConfigSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigSource::User => write!(f, "user"),
+        }
+    }
+}
+
+/// A single configuration layer with its source.
+#[derive(Debug)]
+pub struct ConfigLayer {
+    pub source: ConfigSource,
+    pub data: Config,
+}
+
+/// Layered configuration that preserves all layers and resolves values on read.
+///
+/// Layers are stored in order of precedence (lowest first). Accessors walk
+/// layers from highest to lowest precedence, taking the first value found
+/// (for scalars/overrides) or accumulating across all layers (for additive
+/// fields like mounts).
+#[derive(Debug, Default)]
+pub struct StackedConfig {
+    layers: Vec<ConfigLayer>,
+}
+
+impl StackedConfig {
+    /// Load all configuration layers (currently just the user layer).
+    pub fn load(xdg_dirs: &xdg::BaseDirectories) -> Result<Self> {
+        let mut config = Self::default();
+
+        if let Some(config_path) = xdg_dirs.find_config_file("config.yml") {
+            let data = Config::load_file(&config_path)?;
+            config.add_layer(ConfigSource::User, data);
+        }
+
+        Ok(config)
+    }
+
+    /// Add a layer at the position determined by its source precedence.
+    pub fn add_layer(&mut self, source: ConfigSource, data: Config) {
+        let index = self.layers.partition_point(|layer| layer.source <= source);
+        self.layers.insert(index, ConfigLayer { source, data });
+    }
+
+    /// All layers, lowest precedence first.
+    pub fn layers(&self) -> &[ConfigLayer] {
+        &self.layers
+    }
+
+    /// Last layer to set `claude.version` wins.
+    pub fn claude_version(&self) -> Option<&str> {
+        self.layers
+            .iter()
+            .rev()
+            .find_map(|l| l.data.claude.version.as_deref())
+    }
+
+    /// Mounts from all layers, lowest precedence first.
+    pub fn mounts(&self) -> impl Iterator<Item = &Mount> {
+        self.layers.iter().flat_map(|l| &l.data.mounts)
+    }
+
+    /// Env vars merged across layers; higher precedence overrides.
+    pub fn env(&self) -> HashMap<String, String> {
+        let mut env = HashMap::new();
+        for layer in &self.layers {
+            env.extend(layer.data.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
+        env
+    }
+
+    /// Bridge config merged across layers: last non-default port wins,
+    /// triggers are merged with higher precedence overriding.
+    pub fn bridge(&self) -> BridgeConfig {
+        let port = self
+            .layers
+            .iter()
+            .rev()
+            .find(|l| l.data.bridge.port != DEFAULT_BRIDGE_PORT)
+            .map_or(DEFAULT_BRIDGE_PORT, |l| l.data.bridge.port);
+
+        let mut triggers = HashMap::new();
+        for layer in &self.layers {
+            triggers.extend(
+                layer
+                    .data
+                    .bridge
+                    .triggers
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
+        }
+
+        BridgeConfig { port, triggers }
     }
 }
 
@@ -189,7 +290,7 @@ impl Backend for Docker {
 
 pub struct Contenant<B = Docker> {
     backend: B,
-    config: Config,
+    config: StackedConfig,
     app_dirs: xdg::BaseDirectories,
     project_dir: std::path::PathBuf,
 }
@@ -213,7 +314,7 @@ impl Contenant<Docker> {
         let project_dir = std::fs::canonicalize(project_dir)?;
         Ok(Self {
             backend: Docker,
-            config: Config::load(&app_dirs)?,
+            config: StackedConfig::load(&app_dirs)?,
             app_dirs,
             project_dir,
         })
@@ -282,25 +383,25 @@ impl<B: Backend> Contenant<B> {
         // User-defined mounts (can shadow subdirectories of defaults)
         let user_mounts: Vec<_> = self
             .config
-            .mounts
-            .iter()
+            .mounts()
             .map(|mount| mount.to_docker_volume(&config_dir))
             .collect();
         mounts.extend(user_mounts);
 
         let mut env: HashMap<_, _> = self
             .config
-            .env
-            .iter()
+            .env()
+            .into_iter()
             .map(|(key, value)| {
-                let value = tilde_with_context(value, || Some(CONTAINER_HOME.to_string()));
-                (key.clone(), value.into_owned())
+                let value = tilde_with_context(&value, || Some(CONTAINER_HOME.to_string()));
+                (key, value.into_owned())
             })
             .collect();
 
+        let bridge = self.config.bridge();
         env.insert(
             "CONTENANT_BRIDGE_URL".to_string(),
-            format!("http://host.docker.internal:{}", self.config.bridge.port),
+            format!("http://host.docker.internal:{}", bridge.port),
         );
 
         self.backend.run(&run_image, &mounts, &env, args)
@@ -432,6 +533,71 @@ bridge:
         assert_eq!(
             config.bridge.triggers.get("test"),
             Some(&"echo test".to_string())
+        );
+    }
+
+    #[test]
+    fn stacked_config_empty_returns_defaults() {
+        let config = StackedConfig::default();
+        assert_eq!(config.claude_version(), None);
+        assert_eq!(config.mounts().count(), 0);
+        assert!(config.env().is_empty());
+        assert_eq!(config.bridge().port, DEFAULT_BRIDGE_PORT);
+        assert!(config.bridge().triggers.is_empty());
+    }
+
+    #[test]
+    fn stacked_config_single_layer() {
+        let mut config = StackedConfig::default();
+        let layer: Config = serde_yaml_ng::from_str(
+            r#"
+claude:
+  version: "1.0"
+mounts:
+  - source: /host/a
+    target: /container/a
+env:
+  FOO: bar
+bridge:
+  port: 9000
+  triggers:
+    test: "echo test"
+"#,
+        )
+        .unwrap();
+        config.add_layer(ConfigSource::User, layer);
+
+        assert_eq!(config.claude_version(), Some("1.0"));
+        assert_eq!(config.mounts().count(), 1);
+        assert_eq!(config.env().get("FOO").unwrap(), "bar");
+        assert_eq!(config.bridge().port, 9000);
+        assert_eq!(
+            config.bridge().triggers.get("test"),
+            Some(&"echo test".to_string())
+        );
+    }
+
+    #[test]
+    fn stacked_config_preserves_layers() {
+        let mut config = StackedConfig::default();
+        config.add_layer(
+            ConfigSource::User,
+            serde_yaml_ng::from_str(
+                r#"
+env:
+  FOO: from-user
+mounts:
+  - source: /user/mount
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert_eq!(config.layers().len(), 1);
+        assert_eq!(config.layers()[0].source, ConfigSource::User);
+        assert_eq!(
+            config.layers()[0].data.env.get("FOO"),
+            Some(&"from-user".to_string())
         );
     }
 }

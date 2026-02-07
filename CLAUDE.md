@@ -58,6 +58,19 @@ Implementation: `src/bridge.rs` (axum + tokio).
 
 User-defined mounts (from config) are appended after these and can shadow subdirectories.
 
+### Layered Config (`StackedConfig`)
+
+Configuration uses a layered architecture inspired by jj's `StackedConfig`. Each layer is a `(ConfigSource, Config)` pair stored in precedence order. Layers are preserved individually — accessors resolve across them on read.
+
+**Current layers (lowest → highest precedence):**
+- `User` — `~/.config/contenant/config.yml`
+
+**Resolution rules per field:**
+- `claude.version`, `allowed_domains` — last layer to set wins
+- `mounts` — accumulated across all layers (lowest precedence first)
+- `env`, `bridge.triggers` — merged; higher precedence overrides per-key
+- `bridge.port` — last non-default value wins
+
 ### Config Schema (`~/.config/contenant/config.yml`)
 
 ```yaml

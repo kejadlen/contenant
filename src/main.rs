@@ -7,7 +7,7 @@ use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
 use color_eyre::eyre::Result;
 use tracing_subscriber::EnvFilter;
 
-use contenant::{Config, Contenant, bridge};
+use contenant::{Contenant, StackedConfig, bridge};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -103,9 +103,10 @@ fn main() -> Result<std::process::ExitCode> {
         }
         Command::Bridge => {
             let xdg_dirs = xdg::BaseDirectories::with_prefix("contenant");
-            let config = Config::load(&xdg_dirs)?;
+            let config = StackedConfig::load(&xdg_dirs)?;
+            let bridge = config.bridge();
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(bridge::serve(config.bridge.port, config.bridge.triggers))?;
+            rt.block_on(bridge::serve(bridge.port, bridge.triggers))?;
             Ok(std::process::ExitCode::SUCCESS)
         }
     }
