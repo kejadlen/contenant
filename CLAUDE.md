@@ -65,6 +65,7 @@ Configuration uses a layered architecture inspired by jj's `StackedConfig`. Each
 **Current layers (lowest → highest precedence):**
 - `Default` — built-in defaults (allowed domains, bridge port)
 - `User` — `~/.config/contenant/config.yml`
+- `Project` — `.contenant/config.yml` in the project root
 
 **Resolution rules per field:**
 - `claude.version`, `allowed_domains` — last layer to set wins

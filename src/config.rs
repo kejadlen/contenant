@@ -101,6 +101,8 @@ pub enum ConfigSource {
     Default,
     /// User-level config (~/.config/contenant/config.yml).
     User,
+    /// Project-level config (.contenant/config.yml in the project root).
+    Project,
 }
 
 impl std::fmt::Display for ConfigSource {
@@ -108,6 +110,7 @@ impl std::fmt::Display for ConfigSource {
         match self {
             ConfigSource::Default => write!(f, "default"),
             ConfigSource::User => write!(f, "user"),
+            ConfigSource::Project => write!(f, "project"),
         }
     }
 }
@@ -134,13 +137,25 @@ pub struct StackedConfig {
 
 impl StackedConfig {
     /// Load all configuration layers.
-    pub fn load(xdg_dirs: &xdg::BaseDirectories) -> Result<Self> {
+    ///
+    /// If `project_dir` is provided, a project-level layer is loaded from
+    /// `<project_dir>/.contenant/config.yml` when that file exists.
+    pub fn load(xdg_dirs: &xdg::BaseDirectories, project_dir: Option<&Path>) -> Result<Self> {
         let mut config = Self::with_defaults();
 
         if let Some(config_path) = xdg_dirs.find_config_file("config.yml") {
             let config_dir = config_path.parent().unwrap().to_path_buf();
             let data = Config::load_file(&config_path)?;
             config.add_layer(ConfigSource::User, data, config_dir);
+        }
+
+        if let Some(project_dir) = project_dir {
+            let project_config_path = project_dir.join(".contenant/config.yml");
+            if project_config_path.exists() {
+                let config_dir = project_config_path.parent().unwrap().to_path_buf();
+                let data = Config::load_file(&project_config_path)?;
+                config.add_layer(ConfigSource::Project, data, config_dir);
+            }
         }
 
         Ok(config)
@@ -443,5 +458,161 @@ mounts:
         assert_eq!(mounts.len(), 1);
         assert_eq!(mounts[0].0.source, "relative/path");
         assert_eq!(mounts[0].1, Path::new("/user-config"));
+    }
+
+    #[test]
+    fn project_layer_overrides_user() {
+        let mut config = StackedConfig::with_defaults();
+        config.add_layer(
+            ConfigSource::User,
+            serde_yaml_ng::from_str(
+                r#"
+claude:
+  version: "user-version"
+env:
+  SHARED: from-user
+  USER_ONLY: present
+"#,
+            )
+            .unwrap(),
+            PathBuf::from("/user-config"),
+        );
+        config.add_layer(
+            ConfigSource::Project,
+            serde_yaml_ng::from_str(
+                r#"
+claude:
+  version: "project-version"
+env:
+  SHARED: from-project
+  PROJECT_ONLY: present
+"#,
+            )
+            .unwrap(),
+            PathBuf::from("/project/.contenant"),
+        );
+
+        // Scalars: project wins
+        assert_eq!(config.claude_version(), Some("project-version"));
+
+        // Env: merged, project overrides shared keys
+        let env = config.env();
+        assert_eq!(env.get("SHARED").unwrap(), "from-project");
+        assert_eq!(env.get("USER_ONLY").unwrap(), "present");
+        assert_eq!(env.get("PROJECT_ONLY").unwrap(), "present");
+    }
+
+    #[test]
+    fn project_layer_mounts_accumulate() {
+        let mut config = StackedConfig::with_defaults();
+        config.add_layer(
+            ConfigSource::User,
+            serde_yaml_ng::from_str(
+                r#"
+mounts:
+  - source: /user/mount
+    target: /container/user
+"#,
+            )
+            .unwrap(),
+            PathBuf::from("/user-config"),
+        );
+        config.add_layer(
+            ConfigSource::Project,
+            serde_yaml_ng::from_str(
+                r#"
+mounts:
+  - source: data
+    target: /container/data
+"#,
+            )
+            .unwrap(),
+            PathBuf::from("/project/.contenant"),
+        );
+
+        let mounts: Vec<_> = config.mounts().collect();
+        assert_eq!(mounts.len(), 2);
+        // User mount first (lower precedence)
+        assert_eq!(mounts[0].0.source, "/user/mount");
+        assert_eq!(mounts[0].1, Path::new("/user-config"));
+        // Project mount second (higher precedence), with project config dir
+        assert_eq!(mounts[1].0.source, "data");
+        assert_eq!(mounts[1].1, Path::new("/project/.contenant"));
+    }
+
+    #[test]
+    fn project_layer_bridge_overrides() {
+        let mut config = StackedConfig::with_defaults();
+        config.add_layer(
+            ConfigSource::User,
+            serde_yaml_ng::from_str(
+                r#"
+bridge:
+  port: 9000
+  triggers:
+    user-trigger: "echo user"
+    shared: "echo from-user"
+"#,
+            )
+            .unwrap(),
+            PathBuf::from("/user-config"),
+        );
+        config.add_layer(
+            ConfigSource::Project,
+            serde_yaml_ng::from_str(
+                r#"
+bridge:
+  triggers:
+    project-trigger: "echo project"
+    shared: "echo from-project"
+"#,
+            )
+            .unwrap(),
+            PathBuf::from("/project/.contenant"),
+        );
+
+        let bridge = config.bridge();
+        // Port: user set 9000, project didn't override
+        assert_eq!(bridge.port, 9000);
+        // Triggers: merged, project wins on shared key
+        assert_eq!(bridge.triggers.get("user-trigger").unwrap(), "echo user");
+        assert_eq!(
+            bridge.triggers.get("project-trigger").unwrap(),
+            "echo project"
+        );
+        assert_eq!(bridge.triggers.get("shared").unwrap(), "echo from-project");
+    }
+
+    #[test]
+    fn project_source_ordering() {
+        assert!(ConfigSource::Default < ConfigSource::User);
+        assert!(ConfigSource::User < ConfigSource::Project);
+    }
+
+    #[test]
+    fn load_with_project_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let project_dir = dir.path();
+        let contenant_dir = project_dir.join(".contenant");
+        fs::create_dir_all(&contenant_dir).unwrap();
+        fs::write(
+            contenant_dir.join("config.yml"),
+            "env:\n  FROM_PROJECT: hello\n",
+        )
+        .unwrap();
+
+        let xdg = xdg::BaseDirectories::with_prefix("contenant-test-nonexistent");
+        let config = StackedConfig::load(&xdg, Some(project_dir)).unwrap();
+
+        assert_eq!(config.layers().len(), 2); // default + project
+        assert_eq!(config.env().get("FROM_PROJECT").unwrap(), "hello");
+    }
+
+    #[test]
+    fn load_without_project_dir() {
+        let xdg = xdg::BaseDirectories::with_prefix("contenant-test-nonexistent");
+        let config = StackedConfig::load(&xdg, None).unwrap();
+
+        assert_eq!(config.layers().len(), 1); // default only
     }
 }

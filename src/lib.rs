@@ -125,7 +125,7 @@ impl Contenant<Docker> {
         let project_dir = std::fs::canonicalize(project_dir)?;
         Ok(Self {
             backend: Docker,
-            config: StackedConfig::load(&app_dirs)?,
+            config: StackedConfig::load(&app_dirs, Some(&project_dir))?,
             app_dirs,
             project_dir,
         })

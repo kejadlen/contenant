@@ -103,7 +103,7 @@ fn main() -> Result<std::process::ExitCode> {
         }
         Command::Bridge => {
             let xdg_dirs = xdg::BaseDirectories::with_prefix("contenant");
-            let config = StackedConfig::load(&xdg_dirs)?;
+            let config = StackedConfig::load(&xdg_dirs, None)?;
             let bridge = config.bridge();
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(bridge::serve(bridge.port, bridge.triggers))?;
