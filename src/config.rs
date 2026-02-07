@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use color_eyre::eyre::Result;
 use dirs::home_dir;
@@ -117,6 +117,8 @@ impl std::fmt::Display for ConfigSource {
 pub struct ConfigLayer {
     pub source: ConfigSource,
     pub data: Config,
+    /// Directory used to resolve relative mount source paths in this layer.
+    pub config_dir: PathBuf,
 }
 
 /// Layered configuration that preserves all layers and resolves values on read.
@@ -136,8 +138,9 @@ impl StackedConfig {
         let mut config = Self::with_defaults();
 
         if let Some(config_path) = xdg_dirs.find_config_file("config.yml") {
+            let config_dir = config_path.parent().unwrap().to_path_buf();
             let data = Config::load_file(&config_path)?;
-            config.add_layer(ConfigSource::User, data);
+            config.add_layer(ConfigSource::User, data, config_dir);
         }
 
         Ok(config)
@@ -146,14 +149,22 @@ impl StackedConfig {
     /// Create a stack seeded with the built-in default layer.
     pub fn with_defaults() -> Self {
         let mut config = Self::default();
-        config.add_layer(ConfigSource::Default, Config::default());
+        // Default layer has no meaningful config dir; use root as placeholder.
+        config.add_layer(ConfigSource::Default, Config::default(), PathBuf::from("/"));
         config
     }
 
     /// Add a layer at the position determined by its source precedence.
-    pub fn add_layer(&mut self, source: ConfigSource, data: Config) {
+    pub fn add_layer(&mut self, source: ConfigSource, data: Config, config_dir: PathBuf) {
         let index = self.layers.partition_point(|layer| layer.source <= source);
-        self.layers.insert(index, ConfigLayer { source, data });
+        self.layers.insert(
+            index,
+            ConfigLayer {
+                source,
+                data,
+                config_dir,
+            },
+        );
     }
 
     /// All layers, lowest precedence first.
@@ -170,8 +181,16 @@ impl StackedConfig {
     }
 
     /// Mounts from all layers, lowest precedence first.
-    pub fn mounts(&self) -> impl Iterator<Item = &Mount> {
-        self.layers.iter().flat_map(|l| &l.data.mounts)
+    ///
+    /// Each mount is paired with the config directory of its layer, used to
+    /// resolve relative source paths.
+    pub fn mounts(&self) -> impl Iterator<Item = (&Mount, &Path)> {
+        self.layers.iter().flat_map(|l| {
+            l.data
+                .mounts
+                .iter()
+                .map(move |m| (m, l.config_dir.as_path()))
+        })
     }
 
     /// Env vars merged across layers; higher precedence overrides.
@@ -366,7 +385,7 @@ bridge:
 "#,
         )
         .unwrap();
-        config.add_layer(ConfigSource::User, layer);
+        config.add_layer(ConfigSource::User, layer, PathBuf::from("/user-config"));
 
         assert_eq!(config.claude_version(), Some("1.0"));
         assert_eq!(config.mounts().count(), 1);
@@ -392,6 +411,7 @@ mounts:
 "#,
             )
             .unwrap(),
+            PathBuf::from("/user-config"),
         );
 
         assert_eq!(config.layers().len(), 2);
@@ -401,5 +421,27 @@ mounts:
             config.layers()[1].data.env.get("FOO"),
             Some(&"from-user".to_string())
         );
+    }
+
+    #[test]
+    fn stacked_config_mounts_carry_config_dir() {
+        let mut config = StackedConfig::with_defaults();
+        config.add_layer(
+            ConfigSource::User,
+            serde_yaml_ng::from_str(
+                r#"
+mounts:
+  - source: relative/path
+    target: /container/a
+"#,
+            )
+            .unwrap(),
+            PathBuf::from("/user-config"),
+        );
+
+        let mounts: Vec<_> = config.mounts().collect();
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].0.source, "relative/path");
+        assert_eq!(mounts[0].1, Path::new("/user-config"));
     }
 }

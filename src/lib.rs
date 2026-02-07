@@ -195,7 +195,7 @@ impl<B: Backend> Contenant<B> {
         let user_mounts: Vec<_> = self
             .config
             .mounts()
-            .map(|mount| mount.to_docker_volume(&config_dir))
+            .map(|(mount, config_dir)| mount.to_docker_volume(config_dir))
             .collect();
         mounts.extend(user_mounts);
 
