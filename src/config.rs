@@ -97,6 +97,8 @@ impl Config {
 /// Source of a configuration layer, ordered by precedence (lowest first).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ConfigSource {
+    /// Built-in defaults (lowest precedence).
+    Default,
     /// User-level config (~/.config/contenant/config.yml).
     User,
 }
@@ -104,6 +106,7 @@ pub enum ConfigSource {
 impl std::fmt::Display for ConfigSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ConfigSource::Default => write!(f, "default"),
             ConfigSource::User => write!(f, "user"),
         }
     }
@@ -128,9 +131,9 @@ pub struct StackedConfig {
 }
 
 impl StackedConfig {
-    /// Load all configuration layers (currently just the user layer).
+    /// Load all configuration layers.
     pub fn load(xdg_dirs: &xdg::BaseDirectories) -> Result<Self> {
-        let mut config = Self::default();
+        let mut config = Self::with_defaults();
 
         if let Some(config_path) = xdg_dirs.find_config_file("config.yml") {
             let data = Config::load_file(&config_path)?;
@@ -138,6 +141,13 @@ impl StackedConfig {
         }
 
         Ok(config)
+    }
+
+    /// Create a stack seeded with the built-in default layer.
+    pub fn with_defaults() -> Self {
+        let mut config = Self::default();
+        config.add_layer(ConfigSource::Default, Config::default());
+        config
     }
 
     /// Add a layer at the position determined by its source precedence.
@@ -328,8 +338,8 @@ bridge:
     }
 
     #[test]
-    fn stacked_config_empty_returns_defaults() {
-        let config = StackedConfig::default();
+    fn stacked_config_defaults() {
+        let config = StackedConfig::with_defaults();
         assert_eq!(config.claude_version(), None);
         assert_eq!(config.mounts().count(), 0);
         assert!(config.env().is_empty());
@@ -339,7 +349,7 @@ bridge:
 
     #[test]
     fn stacked_config_single_layer() {
-        let mut config = StackedConfig::default();
+        let mut config = StackedConfig::with_defaults();
         let layer: Config = serde_yaml_ng::from_str(
             r#"
 claude:
@@ -370,7 +380,7 @@ bridge:
 
     #[test]
     fn stacked_config_preserves_layers() {
-        let mut config = StackedConfig::default();
+        let mut config = StackedConfig::with_defaults();
         config.add_layer(
             ConfigSource::User,
             serde_yaml_ng::from_str(
@@ -384,10 +394,11 @@ mounts:
             .unwrap(),
         );
 
-        assert_eq!(config.layers().len(), 1);
-        assert_eq!(config.layers()[0].source, ConfigSource::User);
+        assert_eq!(config.layers().len(), 2);
+        assert_eq!(config.layers()[0].source, ConfigSource::Default);
+        assert_eq!(config.layers()[1].source, ConfigSource::User);
         assert_eq!(
-            config.layers()[0].data.env.get("FOO"),
+            config.layers()[1].data.env.get("FOO"),
             Some(&"from-user".to_string())
         );
     }

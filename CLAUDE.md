@@ -63,6 +63,7 @@ User-defined mounts (from config) are appended after these and can shadow subdir
 Configuration uses a layered architecture inspired by jj's `StackedConfig`. Each layer is a `(ConfigSource, Config)` pair stored in precedence order. Layers are preserved individually — accessors resolve across them on read.
 
 **Current layers (lowest → highest precedence):**
+- `Default` — built-in defaults (allowed domains, bridge port)
 - `User` — `~/.config/contenant/config.yml`
 
 **Resolution rules per field:**
