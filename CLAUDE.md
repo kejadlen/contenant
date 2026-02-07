@@ -102,6 +102,30 @@ Mount sources support `~` expansion (host `$HOME`) and relative paths (resolved 
 - Error handling uses `color_eyre`
 - All dependency versions in Cargo.toml are unconstrained (`*`)
 
+## Project Management
+
+Work is tracked on the [Contenant project board](https://github.com/users/kejadlen/projects/4) (project number 4, owner `@me`).
+
+### Picking up work
+
+When asked to "start work" without a specific task, pick up the next item from the top of the backlog:
+
+1. **In Progress** — finish what's already started.
+2. **Backlog** — take the top item in board order.
+3. **Icebox** — not ready; don't start unless explicitly asked.
+
+Use `gh project item-list 4 --owner @me --format json` to read the board programmatically and determine status/ordering.
+
+### Working in the open
+
+Always work in the open on tracked issues. When working on an issue, post comments documenting:
+
+- **Decisions** — non-obvious choices between alternatives, what was decided and why.
+- **Blockers / scope changes** — unexpected impediments or deviations from the plan.
+- **Summaries** — synthesis of work done at natural breakpoints or on request.
+
+Draft the comment, show it to the user, and wait for confirmation before posting. Never post without explicit approval. Attribute comments to yourself (program and model identity).
+
 ## Verification
 
 Run `just all` after completing each chunk of work.
