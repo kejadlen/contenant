@@ -80,7 +80,7 @@ impl Backend for Docker {
         let cwd = std::env::current_dir()?;
 
         let mut cmd = Command::new("docker");
-        // NET_ADMIN and NET_RAW are required for the entrypoint to configure iptables (nf_tables backend)
+        // NET_ADMIN and NET_RAW are required for the entrypoint to configure nftables
         cmd.args([
             "run",
             "-it",
